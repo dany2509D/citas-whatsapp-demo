@@ -233,3 +233,7 @@ git commit -m "Demo de citas por WhatsApp para clínicas"
 git remote add origin <URL-del-repositorio>
 git push -u origin main
 ```
+
+## Despliegue
+
+Publicado en Vercel (https://citas.panacealogic.dev). Cada `git push` a `main` despliega solo; `vercel.json` fija `public` como salida y no hay paso de compilación. El modo IA real necesita la variable `ANTHROPIC_API_KEY` en Vercel (sin ella la demo sigue en modo guion).
