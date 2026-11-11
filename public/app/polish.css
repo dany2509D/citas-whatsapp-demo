@@ -1,0 +1,443 @@
+/* Acabados y movimiento (capa final; se carga después de base.css, whatsapp-sim.css y app.css).
+   Principios: 1) el movimiento explica causa → efecto y dura poco (80–460 ms); 2) solo se anima transform y opacidad;
+   3) nada se eleva si no se puede pulsar; 4) las sombras son pequeñas y en capas; 5) con «reducir movimiento» todo queda quieto.
+   Las funciones de apoyo (flip, rollTo, withTransition) están en public/shared/ui/motion.js. */
+
+/* ───────────── 1. Fichas: tiempos, curvas y elevación ───────────── */
+:root {
+  --t-press: 80ms; --t-fast: 140ms; --t-base: 220ms; --t-slow: 320ms; --t-spring: 460ms;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);      /* entra: rápido al inicio, frena al final */
+  --ease-in: cubic-bezier(.4, 0, 1, 1);         /* sale: más corto que la entrada */
+  --ease-move: cubic-bezier(.65, 0, .35, 1);    /* viaja de A a B */
+  --spring-soft: cubic-bezier(.22, 1, .36, 1);  /* resorte sin rebote: piezas grandes */
+  --spring: cubic-bezier(.3, 1.25, .5, 1);      /* resorte con 2 % de rebase: burbujas, filas */
+  --spring-bounce: cubic-bezier(.34, 1.56, .64, 1); /* rebote visible: solo piezas pequeñas */
+  --sh-1: 0 1px 0 rgba(0, 0, 0, .03), 0 1px 2px rgba(0, 0, 0, .06);
+  --sh-raise: 0 1px 1px rgba(0, 0, 0, .04), 0 2px 4px -1px rgba(0, 0, 0, .08);
+  --sh-md: 0 1px 1px rgba(0, 0, 0, .04), 0 4px 8px -2px rgba(0, 0, 0, .07), 0 12px 20px -8px rgba(0, 0, 0, .1);
+  --sh-dialog: 0 0 0 1px rgba(0, 0, 0, .04), 0 8px 16px -6px rgba(0, 0, 0, .12), 0 24px 48px -16px rgba(0, 0, 0, .2);
+}
+/* Resortes reales (respuesta calculada) donde el navegador admite linear() */
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring-soft: linear(0, .081, .241, .41, .559, .679, .771, .839, .888, .923, .948, .965, .976, .984, .989, .993, 1);
+    --spring: linear(0, .047, .156, .294, .436, .569, .685, .781, .857, .915, .956, .984, 1.003, 1.013, 1.018, 1.02, 1.019, 1.017, 1.014, 1.011, 1);
+    --spring-bounce: linear(0, .087, .285, .52, .739, .913, 1.033, 1.101, 1.125, 1.12, 1.098, 1.069, 1.04, 1.016, .999, .989, .985, .984, .987, .99, 1);
+  }
+}
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(.6); } }
+@keyframes wash { 0% { opacity: 0; } 12% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes flip-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+.flip-in { animation: flip-in var(--t-slow) var(--spring) backwards; }
+
+/* ───────────── 2. Botones, campos y tarjetas ───────────── */
+/* El cursor cambia fondo y borde; pulsar hunde el botón; solo los botones llenos llevan una sombra pequeña. */
+.btn { transition: background-color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out), color var(--t-fast), box-shadow var(--t-fast), transform var(--t-base) var(--spring); }
+.btn:not([disabled]):hover { transform: none; box-shadow: var(--sh-1); }
+.btn--ghost:not([disabled]):hover { box-shadow: none; }
+.btn:not([disabled]):active { transform: scale(.975); transition-duration: var(--t-press); box-shadow: none; }
+.btn--primary, .btn--dark, .btn--accent, .btn--danger { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 1px 2px rgba(0, 0, 0, .16); }
+.btn--accent { border-color: color-mix(in srgb, var(--brand) 82%, #000); }
+.btn--primary:not([disabled]):hover, .btn--dark:not([disabled]):hover, .btn--danger:not([disabled]):hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 2px 5px -1px rgba(0, 0, 0, .3); }
+.btn--accent:not([disabled]):hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 2px 6px -1px color-mix(in srgb, var(--brand) 45%, transparent); }
+.btn--lg.btn--accent:not([disabled]):hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .14), 0 1px 2px rgba(0, 0, 0, .12), 0 6px 14px -6px color-mix(in srgb, var(--brand) 55%, transparent); }
+.btn:disabled, .btn[disabled] { box-shadow: none; }
+/* La flecha de «ir a otra pantalla» avanza un poco */
+.btn--go .ic:last-child, #cta-admin .ic:last-child { transition: transform var(--t-base) var(--spring); }
+.btn--go:hover .ic:last-child, #cta-admin:hover .ic:last-child { transform: translateX(3px); }
+/* Nada se levanta si no es un botón */
+.kpi:hover { transform: none; box-shadow: none; border-color: var(--line); }
+.how__step:hover { box-shadow: none; border-color: var(--line); }
+.how__step:hover .chip-ic { transform: none; }
+.inbox button:hover { transform: none; }
+.brand:hover .brand__logo { transform: none; }
+.giro-card { transition: border-color var(--t-fast), box-shadow var(--t-base) var(--ease-out), transform var(--t-base) var(--spring); }
+.giro-card:hover, .giro-card:has(input:checked) { transform: none; }
+.giro-card:active { transform: scale(.97); transition-duration: var(--t-press); }
+.giro-card:hover .giro-card__logo { transform: scale(1.04); }
+.giro-card:has(input:checked) .giro-card__logo { transform: none; animation: logo-pick var(--t-spring) var(--spring-bounce); }
+@keyframes logo-pick { from { transform: scale(.82); } }
+.card, .kpi, .stat { box-shadow: var(--sh-1); }
+/* Campos: el contenido se ancla arriba (antes el campo se estiraba al alto de la fila) */
+.field { align-content: start; }
+.cfg__grid { align-items: start; }
+@supports (grid-template-rows: subgrid) {
+  .cfg__grid > .field { grid-row: span 4; grid-template-rows: subgrid; row-gap: 6px; }
+  .cfg__grid > .field > label, .cfg__grid > .field > .label { align-self: end; }
+}
+input[type="text"], input[type="tel"], input[type="number"], input[type="date"], input[type="time"], input[type="search"], select, textarea, .input { box-shadow: inset 0 1px 1px rgba(0, 0, 0, .04); }
+.seg button, .seg-radio span { transition: background-color var(--t-fast) var(--ease-out), color var(--t-fast), box-shadow var(--t-fast); }
+.seg button:active { transform: scale(.97); }
+
+/* ───────────── 3. Color de estado (una variable; ya no depende del orden de las reglas) ───────────── */
+.st-pendiente { --st: #ca8a04; } .st-confirmada { --st: #16a34a; } .st-reprogramada { --st: #2563eb; }
+.st-cancelada { --st: #dc2626; } .st-no_asistio { --st: #ea580c; } .st-atendida { --st: #8a8a8a; }
+.appt-chip[class*="st-"], .mini[class*="st-"], .day-card[class*="st-"], .cal-appt[class*="st-"]:not(.is-pro) { border-left-color: var(--st, var(--line-strong)); }
+.appt-chip[class*="st-"]:hover, .mini[class*="st-"]:hover { border-left-color: var(--st, var(--line-strong)); }
+.cal-appt[class*="st-"]:not(.is-pro) { border-top-color: color-mix(in srgb, var(--st) 35%, var(--line)); border-right-color: color-mix(in srgb, var(--st) 35%, var(--line)); border-bottom-color: color-mix(in srgb, var(--st) 35%, var(--line)); }
+.appt-chip, .mini, .day-card { transition: background-color var(--t-fast), border-color var(--t-fast), transform var(--t-base) var(--spring); }
+.appt-chip:active, .mini:active, .day-card:active { transform: scale(.985); transition-duration: var(--t-press); }
+/* Las horas nunca se parten en dos renglones */
+.mock__row .t, .day-card__time, .appt-chip__time, .cal-appt__t { white-space: nowrap; }
+.snip__rows .mock__row { grid-template-columns: 5.4rem minmax(0, 1fr) auto; }
+.day-card { grid-template-columns: 5.6rem minmax(0, 1fr) auto; }
+
+/* ───────────── 4. Portada ───────────── */
+/* Entrada en menos de un segundo, cada pieza con su gesto: el texto sube, el teléfono entra con peso,
+   la agenda sale de detrás de él, las filas caen en cascada y la flecha —el nexo— aparece al final. */
+main[data-enter] .hero__copy > * { animation: rise 420ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 60ms); }
+main[data-enter] .hero > .mock { animation: none; }
+main[data-enter] .mock__phone { animation: phone-in 520ms var(--spring-soft) 140ms backwards; }
+main[data-enter] .mock__agenda { animation: agenda-in 460ms var(--ease-out) 260ms backwards; }
+main[data-enter] .mock__table > .mock__row { animation: rise 320ms var(--ease-out) backwards; animation-delay: calc(420ms + var(--r, 0) * 45ms); }
+main[data-enter] .mock__link { animation: pop-in var(--t-spring) var(--spring-bounce) 560ms backwards; }
+main[data-enter] .hero::before { animation: fade 600ms ease-out; }
+@keyframes phone-in { from { opacity: 0; transform: translateY(20px) scale(.97); } }
+@keyframes agenda-in { from { opacity: 0; transform: translateX(-14px); } }
+.js-motion [data-reveal] { transform: translateY(12px); transition: opacity 450ms var(--ease-out) var(--d, 0ms), transform 450ms var(--ease-out) var(--d, 0ms), border-color var(--t-fast); }
+
+/* Teléfono de la portada: proporción de teléfono real (alargado), barra de estado, nombre en una línea y barra de escritura */
+.mock__screen { display: flex; flex-direction: column; }
+.mock__status { position: absolute; inset: .56rem 1.05rem auto 1.3rem; z-index: 1; display: flex; justify-content: space-between; align-items: center; color: #fff; font-size: .74rem; font-weight: 650; font-variant-numeric: tabular-nums; pointer-events: none; }
+.mock__status .wa-status__icons { gap: 4px; }
+.mock__status svg { height: .6rem; width: auto; }
+.mock__phone-head > div { min-width: 0; }
+.mock__phone-head b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mock__chat { height: 23rem; -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.5rem); mask-image: linear-gradient(to bottom, transparent 0, #000 1.5rem); }
+.mock__bar { display: flex; align-items: center; gap: 6px; height: 2.5rem; padding: 0 8px .2rem; background: #f0ede6; }
+.mock__field { flex: 1; height: 1.75rem; display: flex; align-items: center; padding: 0 .7rem; border-radius: 999px; background: #fff; border: 1px solid #d3cec3; color: #6b767c; font-size: .78rem; }
+.mock__send { flex: none; width: 1.75rem; height: 1.75rem; display: grid; place-items: center; border-radius: 50%; background: #0b5f55; color: #fff; }
+.mock__send .ic { transform: rotate(-90deg); }
+.mock__send.is-tap { animation: tap var(--t-slow) var(--spring); }
+@keyframes tap { 30% { transform: scale(.84); } }
+/* Burbujas de la historia: la del paciente sale de abajo a la derecha (del campo); la del asistente crece desde su esquina */
+.mock__b.is-on { animation: mock-in var(--t-slow) var(--spring) backwards; transform-origin: 0 0; }
+.mock__b--out.is-on { animation-name: mock-send; transform-origin: 100% 100%; }
+.mock__typing.is-on { animation: mock-in var(--t-base) var(--spring) backwards; transform-origin: 0 100%; }
+@keyframes mock-in { from { opacity: 0; transform: translateY(8px) scale(.9); } 40% { opacity: 1; } }
+@keyframes mock-send { from { opacity: 0; transform: translateY(16px) scale(.86); } 40% { opacity: 1; } }
+.mock__chat { transition: opacity var(--t-slow) var(--ease-in); }
+
+/* Agenda de la portada: renglones de alto fijo (el espacio libre se lee como agenda, no como hueco) y un «Horario libre»
+   que se convierte en la cita cuando el asistente confirma. Nada cambia de alto. */
+.mock__agenda { box-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 8px 16px -8px rgba(0, 0, 0, .16); }
+.mock__table { grid-auto-rows: 4.1rem; min-height: 24.6rem; background: repeating-linear-gradient(to bottom, transparent 0 calc(4.1rem - 1px), var(--line) calc(4.1rem - 1px) 4.1rem); }
+.mock__table > .mock__row { padding-block: 0; border-bottom: 0; }
+.mock__table > .mock__row--new, .mock__table > .mock__row--new.is-on { position: relative; isolation: isolate; max-height: none; padding-block: 0; opacity: 1; overflow: visible; border-bottom-width: 0; transition: none; }
+.mock__row--new > .t { grid-column: 1; grid-row: 1; color: var(--fog); transition: color var(--t-base); }
+.mock__row--new > .who { grid-column: 2; grid-row: 1; }
+.mock__row--new > .badge { grid-column: 3; grid-row: 1; }
+.mock__row--new > .who, .mock__row--new > .badge { opacity: 0; transform: translateY(6px); transition: opacity var(--t-fast) var(--ease-in), transform var(--t-fast) var(--ease-in); }
+.mock__row--new::before { content: "Horario libre"; grid-column: 2 / -1; grid-row: 1; align-self: center; padding: 7px 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-sm); color: var(--muted); font-size: var(--fs-xs); font-weight: 500; transition: opacity var(--t-base) var(--ease-out), transform var(--t-base) var(--ease-out); }
+.mock__row--new.is-on::before { opacity: 0; transform: scale(.98); }
+.mock__row--new.is-on > .t { color: var(--ink); }
+.mock__row--new.is-on > .who, .mock__row--new.is-on > .badge { opacity: 1; transform: none; transition: opacity var(--t-base) var(--ease-out) 140ms, transform var(--t-spring) var(--spring) 140ms; }
+.mock__row--new.is-on > .badge { transition-delay: 260ms; }
+.mock__row--new.is-on > .who small { color: var(--brand); font-weight: 600; }
+/* Lavado de marca que se apaga solo (solo opacidad) */
+.mock__row--new::after { content: ""; position: absolute; inset: 0 0 1px; z-index: -1; background: var(--brand-soft); box-shadow: inset 3px 0 0 var(--brand); opacity: 0; pointer-events: none; }
+.mock__row--new.is-on::after { animation: wash 2.2s var(--ease-in) 100ms; }
+/* La flecha entre el teléfono y la agenda se dispara cuando la cita pasa de uno a otra */
+.mock__link.is-fire { animation: link-pop var(--t-spring) var(--spring-bounce); }
+.mock__link.is-fire::after { content: ""; position: absolute; inset: -1px; border-radius: 50%; border: 2px solid var(--brand); animation: ring-out 600ms var(--ease-out) forwards; pointer-events: none; }
+@keyframes link-pop { 30% { transform: scale(1.2); background: var(--brand); color: #fff; border-color: var(--brand); } }
+@keyframes ring-out { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
+
+/* Pasos y franja de confianza con el mismo ancho que el héroe; título, texto y fragmento alineados entre tarjetas */
+@media (min-width: 1280px) {
+  .how, .trust { max-width: none; }
+  .cta-row { gap: 10px 18px; }
+  .cta-row .btn--ghost { padding-inline: 12px; margin-inline-start: -12px; }
+}
+@supports (grid-template-rows: subgrid) {
+  @media (min-width: 900px) {
+    .how__step { display: grid; grid-template-rows: subgrid; grid-row: span 3; row-gap: 0; }
+    .how__step > p + .snip { margin-top: 16px; }
+    .snip { align-self: stretch; }
+    .snip:has(.snip__rows) { align-content: start; }
+  }
+}
+.snip { border-radius: var(--r-sm); }
+.snip__rows { border-radius: var(--r-xs); }
+
+/* ───────────── 5. Teléfono y chat ───────────── */
+/* La pantalla es una columna: el chat es lo único que crece (antes, en móvil, los botones flotaban a media pantalla) */
+.wa-phone { display: flex; flex-direction: column; }
+.wa-phone > * { flex: none; }
+.wa-phone > .wa-chat { flex: 1 1 0; min-height: 0; }
+/* Dentro del teléfono se usa la letra del sistema de cada equipo, como hace WhatsApp (no la tipografía de la página) */
+.wa-phone, .mock__screen { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+/* Marco: se apoya (sombras cortas en capas) y el cristal tiene un reflejo muy leve */
+.wa-device { box-shadow: 0 0 0 1px rgba(0, 0, 0, .3), inset 0 0 0 1px rgba(255, 255, 255, .7), inset 0 0 0 2.5px rgba(0, 0, 0, .16), 0 1px 1px rgba(0, 0, 0, .22), 0 10px 16px -8px rgba(0, 0, 0, .3), 0 30px 44px -26px rgba(0, 0, 0, .4); }
+.wa-phone::after, .mock__screen::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; background: linear-gradient(118deg, rgba(255, 255, 255, .055) 0, rgba(255, 255, 255, .055) 21%, transparent 21.3%); }
+/* Cabecera: flecha y acciones decorativas, como en una conversación real */
+.wa-head { padding-left: 6px; gap: 8px; }
+.wa-head__back { display: grid; place-items: center; flex: none; opacity: .95; }
+.wa-head__txt { flex: 1 1 auto; min-width: 0; }
+.demo-phone { grid-template-columns: minmax(0, 1fr); } /* el nombre largo de la clínica se recorta con «…»; no ensancha el teléfono */
+.wa-head__acts { display: flex; align-items: center; gap: 16px; margin-left: auto; padding-right: 2px; opacity: .95; flex: none; }
+.wa-head__title { font-weight: 600; }
+/* Campo de mensaje: píldora (la regla general de campos lo dejaba cuadrado y con borde negro) */
+.wa-input .wa-input__field { min-height: 44px; padding: 10px 16px; border: 1px solid #c9c3b7; border-radius: 22px; background: #fff; color: var(--wa-ink); font-size: 16px; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .04); }
+.wa-input .wa-input__field:focus-visible { outline: none; border-color: #0b5f55; box-shadow: 0 0 0 3px rgba(11, 95, 85, .2); }
+.wa-input__btn { transition: background-color var(--t-fast), transform var(--t-base) var(--spring), opacity var(--t-fast); }
+.wa-input__btn:active { transform: scale(.9); transition-duration: var(--t-press); }
+.wa-input:has(.wa-input__field:placeholder-shown) .wa-input__btn--send { opacity: .6; transform: scale(.92); }
+/* Burbujas: hora y checks dentro, cola solo en la primera de cada grupo, mensajes seguidos agrupados */
+.wa-chat { gap: 2px; padding-inline: 16px; }
+.wa-row { margin-top: 6px; }
+.wa-row--in + .wa-row--in, .wa-row--out + .wa-row--out { margin-top: 0; }
+.wa-bubble { position: relative; padding: 6px 9px 7px 10px; border-radius: 10px; box-shadow: 0 1px .5px rgba(11, 20, 26, .14); }
+.wa-text { display: inline; }
+.wa-text::after { content: ""; display: inline-block; width: 74px; height: 1px; }
+.wa-row--out .wa-text::after { width: 96px; }
+.wa-meta { position: absolute; right: 8px; bottom: 5px; margin: 0; line-height: 1; }
+.wa-bubble:not(:has(.wa-text)) .wa-meta { position: static; margin-top: 4px; }
+.wa-row--in .wa-bubble { border-top-left-radius: 0; }
+.wa-row--out .wa-bubble { border-top-right-radius: 0; }
+.wa-row .wa-bubble::before { content: ""; position: absolute; top: 0; width: 9px; height: 12px; background: inherit; }
+.wa-row--in .wa-bubble::before { left: -8px; clip-path: polygon(100% 0, 0 0, 100% 100%); }
+.wa-row--out .wa-bubble::before { right: -8px; clip-path: polygon(0 0, 100% 0, 0 100%); }
+.wa-row--in + .wa-row--in .wa-bubble, .wa-row--out + .wa-row--out .wa-bubble { border-radius: 10px; }
+.wa-row--in + .wa-row--in .wa-bubble::before, .wa-row--out + .wa-row--out .wa-bubble::before { display: none; }
+/* Llegada: lo enviado sale de abajo a la derecha (junto al campo); lo recibido crece desde la esquina de la cola */
+.wa-row--new .wa-bubble { animation: wa-in var(--t-slow) var(--spring) backwards; transform-origin: 0 0; }
+.wa-row--out.wa-row--new .wa-bubble { animation-name: wa-send; transform-origin: 100% 100%; }
+.wa-row--typing .wa-bubble { animation: wa-in var(--t-base) var(--spring) backwards; transform-origin: 0 100%; }
+.wa-sys.is-new span { animation: pop-in var(--t-base) var(--ease-out) backwards; }
+@keyframes wa-in { from { opacity: 0; transform: translateY(8px) scale(.9); } 40% { opacity: 1; } }
+@keyframes wa-send { from { opacity: 0; transform: translateY(18px) scale(.86); } 40% { opacity: 1; } }
+/* Checks: el segundo trazo se dibuja al entregarse; ambos pasan de gris a azul al leerse */
+.wa-ticks path { fill: none; stroke: #667781; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--t-base) linear; }
+.wa-ticks path + path { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke var(--t-base) linear, stroke-dashoffset var(--t-base) var(--ease-out); }
+.wa-ticks.is-delivered path + path { stroke-dashoffset: 0; }
+.wa-ticks.is-read path { stroke: #1c7fd6; }
+/* Respuestas rápidas: entran escalonadas solo cuando cambian; pulsar las hunde */
+.wa-chips.is-fresh .wa-chip { animation: chip-in var(--t-slow) var(--spring) backwards; animation-delay: calc(var(--n, 0) * 35ms); }
+@keyframes chip-in { from { opacity: 0; transform: translateY(8px) scale(.94); } }
+.wa-chip { transition: background-color var(--t-fast), border-color var(--t-fast), transform var(--t-base) var(--spring); }
+.wa-chip:active { transform: scale(.95); transition-duration: var(--t-press); }
+.wa-human__btn { transition: background-color var(--t-fast), transform var(--t-base) var(--spring); }
+.wa-human__btn:active { transform: scale(.96); transition-duration: var(--t-press); }
+@media (max-width: 520px) { .wa-phone::after { display: none; } }
+
+/* ───────────── 6. Panel En vivo e indicadores ───────────── */
+/* Cifras que ruedan dígito a dígito (motion.js → rollTo). El texto real sigue en el nodo; lo que se ve es la columna 0–9. */
+.roll__d { position: relative; display: inline-block; clip-path: inset(0); -webkit-text-fill-color: transparent; }
+.roll__d::after { content: "0\A 1\A 2\A 3\A 4\A 5\A 6\A 7\A 8\A 9"; white-space: pre; position: absolute; left: 0; top: 0; -webkit-text-fill-color: currentColor; transform: translateY(calc(var(--d, 0) * -10%)); transition: transform var(--t-spring) var(--spring) calc(var(--i, 0) * 45ms); }
+/* El evento nuevo baja desde arriba (lo mueve flip); su resalte se queda un momento y se apaga */
+.feed li.is-new { animation: none; }
+.feed li { transition: background-color 1.2s var(--ease-in); }
+.appt-chip.flip-in { animation: flip-in var(--t-spring) var(--spring) backwards; }
+.rem-list li { transition: border-color var(--t-fast); }
+
+/* ───────────── 7. Calendario del panel ───────────── */
+/* Línea de cada hora visible y media hora tenue; la columna de hoy lleva un tinte del color del giro */
+.cal__col { background-image: linear-gradient(to bottom, #d9d9d9 0 1px, transparent 1px), linear-gradient(to bottom, #ececec 0 1px, transparent 1px); background-size: 100% calc(60 * var(--px)), 100% calc(30 * var(--px)); background-repeat: repeat-y; }
+.cal__col.is-today { background-color: color-mix(in srgb, var(--brand) 4%, #fff); }
+.cal__head.is-today b { color: var(--brand-dark); }
+.cal__times span { color: var(--muted); font-size: var(--fs-xs); }
+/* Las citas se despliegan desde su hora de inicio hacia abajo */
+.cal-appt.is-enter { animation: appt-in 280ms var(--ease-out) calc(var(--e, 0) * 22ms) backwards; }
+.cal-appt.is-enter.flash { animation: appt-in 280ms var(--ease-out) calc(var(--e, 0) * 22ms) backwards, flash 2.2s ease-out; }
+@keyframes appt-in { from { opacity: 0; clip-path: inset(0 0 100% 0); transform: translateY(-4px); } to { clip-path: inset(0 0 0 0); } }
+/* Arrastre: el original queda como hueco, el destino muestra cuánto ocupará la cita y al soltar se asienta */
+.cal-appt { transition: box-shadow var(--t-fast) var(--ease-out), background-color var(--t-fast); }
+.cal-appt:hover { box-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 6px 14px -6px rgba(0, 0, 0, .22); }
+.cal-appt:active { cursor: grabbing; }
+.cal-appt.is-dragging { opacity: 1; background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.cal-appt.is-dragging > * { opacity: .35; }
+.cal__col.is-over { background-color: color-mix(in srgb, var(--brand-soft) 45%, #fff); }
+.cal__drop { left: 4px; right: 4px; background: color-mix(in srgb, var(--brand) 10%, #fff); border: 1.5px dashed var(--brand); border-radius: var(--r-sm); transition: top 90ms var(--ease-out); }
+.cal__drop::after { top: 4px; left: 6px; right: auto; }
+.cal-appt.flash:not(.is-enter) { animation: settle var(--t-spring) var(--spring-bounce), flash 2.2s ease-out; }
+@keyframes settle { from { transform: translateY(-6px) scale(1.03); } }
+
+/* ───────────── 8. Diálogos, avisos, cambio de giro y presentación ───────────── */
+.dlg { box-shadow: var(--sh-dialog); }
+.dlg[open] { animation: dlg-in var(--t-base) var(--spring-soft); }
+.dlg::backdrop { background: rgba(10, 10, 10, .44); animation: dlg-fade var(--t-base) var(--ease-out); }
+.dlg.is-closing { animation: dlg-out var(--t-fast) var(--ease-in) forwards; }
+.dlg.is-closing::backdrop { animation: dlg-fade-out var(--t-fast) var(--ease-in) forwards; }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+@keyframes dlg-out { to { opacity: 0; transform: scale(.985); } }
+@keyframes dlg-fade { from { opacity: 0; } }
+@keyframes dlg-fade-out { to { opacity: 0; } }
+@media (max-width: 520px) { .dlg[open] { animation: sheet-in var(--t-slow) var(--spring-soft); } }
+@keyframes sheet-in { from { opacity: 0; transform: translateY(24px); } }
+.toast { box-shadow: var(--sh-dialog); transform-origin: 50% 100%; animation: toast-in var(--t-slow) var(--spring); }
+.toast.is-leaving { animation: toast-out 150ms var(--ease-in) forwards; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.96); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(4px) scale(.98); } }
+/* Cambio de giro: fundido cruzado de la vista; el banner y la barra quedan firmes */
+.demo-banner { view-transition-name: banner; }
+.appbar { view-transition-name: appbar; }
+::view-transition-group(*) { animation-duration: 260ms; animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
+::view-transition-old(*), ::view-transition-new(*) { animation-duration: 260ms; animation-timing-function: ease; }
+/* Presentación: el resalte late dos veces y se queda quieto (antes latía sin parar) */
+.pres-hl { animation: hl 1.4s ease-in-out 2; }
+.pres { box-shadow: var(--sh-dialog), 0 0 0 1px #262626; }
+.pres__bar i { transition: width var(--t-slow) var(--ease-out); }
+
+/* ───────────── 10. Rediseño: identidad del giro y composición ─────────────
+   La marca de la clínica pasa de «acento» a protagonista: escenario del producto teñido con su color, palabra clave del
+   titular, íconos en recuadros tintados y un cierre a todo color. Lo de Panacea (controles de la demo) va en negro. */
+
+/* Íconos en recuadro tintado con el color de su función (antes: recuadro blanco con borde) */
+.chip-ic { --tone: var(--fog); background: color-mix(in srgb, var(--tone) 10%, #fff); border-color: color-mix(in srgb, var(--tone) 26%, #fff); color: var(--tone); border-radius: 10px; }
+.chip-ic--ok { --tone: var(--green); } .chip-ic--warn { --tone: var(--danger); } .chip-ic--brand { --tone: var(--brand); }
+.chip-ic--amber { --tone: var(--orange); } .chip-ic--indigo { --tone: #2563eb; } .chip-ic--slate { --tone: var(--fog); }
+
+/* Etiqueta de sección y cabecera de sección */
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 10px; border-radius: var(--r-pill); background: var(--brand-soft); border: 1px solid color-mix(in srgb, var(--brand) 24%, #fff); color: var(--brand-dark); font-size: var(--fs-xs); font-weight: 600; }
+.sec-head { display: grid; gap: 14px; justify-items: center; text-align: center; max-width: 46rem; margin: clamp(64px, 8vw, 104px) auto 30px; }
+.sec-head h2, .pvsec__copy h2, .cta-band h2 { font-size: clamp(1.65rem, 2.7vw, 2.5rem); line-height: 1.08; letter-spacing: -.028em; font-weight: 500; }
+
+/* Portada: palabra clave en el color del giro, datos del producto bajo los botones y el producto sobre un escenario teñido */
+.hero::before { display: none; }
+.hero h1 .hl { color: var(--brand); }
+.hero__facts { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px; margin: 28px 0 0; padding: 20px 0 0; border-top: 1px solid var(--line); }
+.hero__facts li { display: inline-flex; align-items: center; gap: 8px; font-size: var(--fs-sm); font-weight: 500; color: var(--ink-2); }
+.hero__facts .ic { color: var(--brand); }
+main[data-enter] .hero__copy > :nth-child(4) { --i: 3; }
+.mock { padding: clamp(14px, 1.3vw, 24px); border-radius: 28px; border: 1px solid color-mix(in srgb, var(--brand) 20%, var(--line)); overflow: hidden;
+  background: radial-gradient(120% 85% at 100% 0%, color-mix(in srgb, var(--brand) 16%, #fff) 0%, transparent 62%), linear-gradient(180deg, color-mix(in srgb, var(--brand) 7%, #fff), #fff 88%); }
+.mock::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .55;
+  background-image: linear-gradient(to right, color-mix(in srgb, var(--brand) 13%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, var(--brand) 13%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px; -webkit-mask-image: radial-gradient(90% 80% at 100% 0%, #000 0%, transparent 78%); mask-image: radial-gradient(90% 80% at 100% 0%, #000 0%, transparent 78%); }
+.mock > * { position: relative; z-index: 1; }
+.mock > .mock__link { z-index: 2; }
+.mock__table > .mock__row { grid-template-columns: 4.9rem minmax(0, 1fr) auto; gap: 10px; padding-inline: 14px; }
+main[data-enter] .hero .mock { animation: fade 500ms var(--ease-out) backwards; }
+@media (min-width: 1280px) { .hero__facts { justify-content: flex-start; } }
+@media (max-width: 760px) { .mock { padding: 16px 12px; border-radius: 20px; } }
+
+/* Cómo funciona: pasos conectados */
+.how { margin-top: 0; }
+.how__step { position: relative; }
+.how__n { width: 34px; height: 34px; box-shadow: 0 0 0 4px var(--brand-soft); }
+@media (min-width: 900px) {
+  .how__step:not(:last-child)::after { content: ""; position: absolute; top: 2.15rem; right: -15px; width: 9px; height: 9px; border-top: 2px solid var(--line-strong); border-right: 2px solid var(--line-strong); transform: rotate(45deg); }
+}
+
+/* Lo que ve su recepción: texto + vista real del panel */
+.pvsec { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(28px, 4.5vw, 80px); align-items: center; margin-top: clamp(64px, 8vw, 104px); }
+.pvsec__copy h2 { margin: 16px 0 12px; }
+.pvsec__copy p { color: var(--muted); max-width: 52ch; }
+.ticks { list-style: none; display: grid; gap: 12px; margin: 22px 0 26px; padding: 0; }
+.ticks li { display: flex; align-items: flex-start; gap: 10px; }
+.ticks .ic { color: var(--brand); margin-top: 3px; }
+.pv { background: #fff; border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-md); overflow: hidden; }
+.pv__bar { display: flex; align-items: center; gap: 6px; padding: 11px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
+.pv__bar i { width: 10px; height: 10px; border-radius: 50%; background: #d4d4d4; }
+.pv__bar span { margin-left: 8px; }
+.pv__kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px; }
+.pv__kpi { display: grid; gap: 2px; align-content: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; }
+.pv__kpi small { color: var(--muted); font-size: var(--fs-xs); font-weight: 500; line-height: 1.25; min-height: 2.5em; }
+.pv__kpi b { font-size: 1.6rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pv__kpi .kpi__bar { grid-area: auto; margin-top: 4px; }
+.pv__list { border-top: 1px solid var(--line); }
+.pv__row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.pv__row:last-child { border-bottom: 0; }
+.pv__row b { display: block; font-size: var(--fs-sm); font-weight: 600; }
+.pv__row small { display: block; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.trust { margin-top: clamp(40px, 5vw, 64px); }
+@media (max-width: 980px) { .pvsec { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .pv__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Cierre a todo color con la acción principal */
+.cta-band { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 22px 36px; margin-top: clamp(40px, 5vw, 64px); padding: clamp(26px, 4vw, 56px); border-radius: 28px; color: #fff;
+  background: radial-gradient(80% 150% at 100% 0%, color-mix(in srgb, #fff 16%, var(--brand)) 0%, transparent 60%), var(--brand); }
+.cta-band h2 { color: #fff; }
+.cta-band p { margin-top: 10px; max-width: 48ch; color: rgba(255, 255, 255, .93); }
+.cta-band__act { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn--light, .btn--light:hover { background: #fff; border-color: #fff; color: var(--brand-dark); }
+.btn--light:not([disabled]):hover { background: #f5f5f5; box-shadow: 0 6px 14px -6px rgba(0, 0, 0, .35); }
+.btn--line, .btn--line:hover { background: transparent; border-color: rgba(255, 255, 255, .6); color: #fff; box-shadow: none; }
+.btn--line:not([disabled]):hover { background: rgba(255, 255, 255, .12); border-color: #fff; }
+.cta-band :focus-visible { outline-color: #fff; }
+
+/* Demo del cliente: los controles de la demo son de Panacea, no de la clínica → consola negra */
+.tools { background: #0a0a0a; border-color: #0a0a0a; color: #f5f5f5; box-shadow: var(--sh-md); }
+.tools h2 { color: #fff; }
+.tools .btn { background: #171717; border-color: #3d3d3d; color: #fff; box-shadow: none; }
+.tools .btn:not([disabled]):hover { background: #262626; border-color: #525252; box-shadow: none; }
+.tools .btn--primary { background: #fff; border-color: #fff; color: #0a0a0a; }
+.tools .btn--primary:not([disabled]):hover { background: #e5e5e5; border-color: #e5e5e5; }
+.tools .mode { border-top-color: #2a2a2a; }
+.tools legend, .tools .label { color: #d4d4d4; }
+.tools .seg-radio { background: #1c1c1c; }
+.tools .seg-radio span { color: #c9c9c9; }
+.tools .seg-radio input:checked + span { background: #fff; color: #0a0a0a; box-shadow: none; }
+.tools .mode__status { color: #b8b8b8; }
+.tools :focus-visible, .tools .seg-radio input:focus-visible + span { outline-color: #fff; }
+/* Panel En vivo: línea de tiempo en «Lo que acaba de pasar» y columnas con estado vacío intencional */
+.feed { position: relative; isolation: isolate; }
+.feed::before { content: ""; position: absolute; z-index: -1; left: 22px; top: 26px; bottom: 26px; width: 1px; background: var(--line); }
+.pro-col { border: 1px solid var(--line); }
+.pro-col .empty { padding: 14px 10px; border: 1px dashed var(--line-strong); border-radius: var(--r-sm); text-align: center; }
+.initials { background: var(--brand-soft); border-color: color-mix(in srgb, var(--brand) 22%, #fff); color: var(--brand-dark); }
+
+/* Panel de recepción: identidad de la clínica en la barra lateral, barra de progreso real y barra de herramientas agrupada */
+.side-id { display: flex; align-items: center; gap: 10px; padding: 2px 10px 14px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.side-id svg { width: 34px; height: 34px; flex: none; }
+.side-id b { display: block; font-size: var(--fs-sm); font-weight: 600; line-height: 1.2; }
+.side-id small { color: var(--muted); font-size: var(--fs-xs); }
+.kpi { grid-template-areas: "chip label" "value value" "sub sub" "bar bar"; }
+.kpi__bar { grid-area: bar; height: 6px; margin-top: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+.kpi__bar i { display: block; height: 100%; border-radius: 3px; background: var(--green); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); animation: bar-grow 700ms var(--ease-out) 200ms backwards; }
+@keyframes bar-grow { from { transform: scaleX(0); } }
+.cal-bar .seg { background: #ececec; }
+.cal-bar { padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); }
+@media (max-width: 1023px) { .side-id { display: none; } }
+@media (max-width: 759px) { .kpi { grid-template-areas: "label" "value" "sub" "bar"; } }
+
+/* Teléfono de la demo: misma proporción que el de la portada; el tamaño lo ajusta demo.js con zoom según el alto de la ventana */
+@media (min-width: 521px) {
+  .demo-grid { grid-template-columns: auto minmax(0, 1fr); }
+  .demo-phone { justify-items: start; }
+  .demo-phone .wa-device { width: 372px; max-width: none; margin: 0; }
+  .demo-phone .wa-phone { --phone-h: 704px; min-height: 0; }
+  .demo-phone > .tools { width: 0; min-width: 100%; }
+}
+@media (min-width: 521px) and (max-width: 1023px) {
+  .demo-grid { grid-template-columns: minmax(0, 1fr); }
+  .demo-phone { justify-items: center; }
+  .demo-phone > .tools { width: auto; min-width: 0; justify-self: stretch; }
+}
+
+/* Configuración paginada: una sección por página, con anterior / siguiente */
+.cfg-pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 4px; }
+.cfg-pager__n { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+.cfg > section:not([hidden]), .cfg > .cfg:not([hidden]) { animation: rise var(--t-slow) var(--ease-out) backwards; }
+
+/* Presentación: anillo que viaja de objetivo en objetivo */
+.pres-ring { position: absolute; left: 0; top: 0; z-index: 39; pointer-events: none; border: 2px solid var(--black); border-radius: 14px; box-shadow: 0 0 0 4px var(--brand-ring); will-change: transform, width, height; }
+.pres-ring::after { content: ""; position: absolute; inset: -7px; border-radius: inherit; border: 2px solid var(--brand); opacity: 0; }
+.pres-ring.is-landed::after { animation: ring-ping 700ms var(--ease-out); }
+@keyframes ring-ping { from { opacity: .55; transform: scale(1); } to { opacity: 0; transform: scale(1.04); } }
+
+/* Configuración: interruptores (misma casilla, solo CSS) y guardado discreto */
+.check input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 36px; height: 22px; border-radius: 999px; background: #bdbdbd; position: relative; cursor: pointer; transition: background-color var(--t-fast); }
+.check input[type="checkbox"]::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .3); transition: transform var(--t-base) var(--spring); }
+.check input[type="checkbox"]:checked { background: var(--brand); }
+.check input[type="checkbox"]:checked::after { transform: translateX(14px); }
+.check input[type="checkbox"]:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.autosave { display: inline-flex; justify-self: start; width: auto; padding: 6px 14px; border-radius: 999px; font-size: var(--fs-xs); }
+
+/* Bandeja: lista continua con divisores dentro de un solo borde */
+.inbox { gap: 0; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: #fff; }
+.inbox li + li { border-top: 1px solid var(--line); }
+.inbox button { border: 0; border-radius: 0; border-left: 4px solid transparent; }
+.inbox button:hover { background: var(--surface-2); }
+.inbox button[aria-current="true"] { background: var(--brand-soft); border-left-color: var(--brand); }
+.inbox button.is-urgent, .inbox button.is-urgent[aria-current="true"] { border-left-color: var(--danger); }
+.inbox button.is-human { border-left-color: #eab308; }
+
+/* ───────────── 9. Reducir movimiento ───────────── */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  .mock__row--new.is-on::after, .mock__link.is-fire::after, .pres-hl { animation: none !important; }
+  .roll__d::after { transition: none !important; }
+}

@@ -1,0 +1,20 @@
+# Despliegue en Netlify (p. ej. el subdominio citas.panacealogic.dev).
+# Sitio estático: no hay paso de compilación. La función /api/chat es opcional (modo "IA real").
+[build]
+  publish = "public"
+  functions = "api"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+
+[[headers]]
+  for = "/app/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
