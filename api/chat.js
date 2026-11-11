@@ -161,4 +161,22 @@ export function createHandler({ env = process.env, getClient = defaultClient } =
   };
 }
 
-export default createHandler();
+// Una sola función para dos hosts: Netlify llama con una Request web; Vercel (Node) llama con (req, res) de Node.
+const handler = createHandler();
+async function viaNode(req, res) {
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  const body = Buffer.concat(chunks);
+  const url = `https://${req.headers.host || 'localhost'}${req.url}`;
+  const headers = new Headers();
+  for (const [k, v] of Object.entries(req.headers)) if (v != null) headers.set(k, Array.isArray(v) ? v.join(', ') : String(v));
+  const init = { method: req.method, headers };
+  if (!['GET', 'HEAD'].includes(req.method) && body.length) init.body = body;
+  const out = await handler(new Request(url, init));
+  res.statusCode = out.status;
+  out.headers.forEach((v, k) => res.setHeader(k, v));
+  res.end(Buffer.from(await out.arrayBuffer()));
+}
+export default function entry(req, ...rest) {
+  return typeof req?.headers?.get === 'function' ? handler(req, ...rest) : viaNode(req, rest[0]);
+}
