@@ -106,7 +106,7 @@ function seedAppointments(c, id, today, nowS, nowE, r) {
       if (!free.length) continue;
       const patient = pick(r, free);
       const origin = r() < 0.6 ? 'chat' : 'panel';
-      const res = createAppointment(c, { name: patient.name, phone: patient.phone, serviceId, professionalId: pro.id, start: pick(r, starts), origin, ts: createdStamp(r, key, today) });
+      const res = createAppointment(c, { name: patient.name, phone: patient.phone, serviceId, professionalId: pro.id, start: pick(r, starts), origin, ts: createdStamp(r, key, today), live: false });
       if (res.ok) placed++;
     }
   });
@@ -171,7 +171,7 @@ function claimAppt(c, patient, status, today, nowS, nowE, taken) {
     const svc = c.config.services[1] || c.config.services[0];
     const from = `${addDays(mondayOf(today), 7)}T00:00`;
     const slot = freeSlots(c, { serviceId: svc.id, from, days: 7, patientPhone: patient.phone })[0];
-    const res = createAppointment(c, { name: patient.name, phone: patient.phone, serviceId: svc.id, professionalId: slot.professionalId, start: slot.start, origin: 'chat', ts: nowE - 2 * 86400000 });
+    const res = createAppointment(c, { name: patient.name, phone: patient.phone, serviceId: svc.id, professionalId: slot.professionalId, start: slot.start, origin: 'chat', ts: nowE - 2 * 86400000, live: false });
     a = res.appt;
     a.status = status;
     if (status === 'reprogramada') { a.rescheduled = true; a.avoided = true; }

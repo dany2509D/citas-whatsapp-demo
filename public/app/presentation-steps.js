@@ -7,7 +7,6 @@ const PER_GIRO = {
   dental: { service: 'limpieza', urgent: 'tengo un dolor fuerte en una muela' },
   vet: { service: 'vacuna', urgent: 'mi perro se tragó algo y está vomitando' },
 };
-const DEMO_PHONE = '6000-0000';
 
 export function buildSteps(app) {
   const { controller: ctl, store } = app;
@@ -48,10 +47,10 @@ export function buildSteps(app) {
     },
     {
       title: 'Solo lo necesario',
-      note: 'Pide nombre y teléfono (y los datos básicos de la mascota en veterinaria). Nunca síntomas ni diagnósticos: la privacidad es parte del diseño.',
+      note: 'Solo pide el nombre (y los datos básicos de la mascota en veterinaria): el teléfono es el del WhatsApp desde el que escribe, y el resumen lo muestra. Nunca síntomas ni diagnósticos: la privacidad es parte del diseño.',
       highlight: '.wa-device',
       run: async ({ instant }) => {
-        await send('1', instant); await send('Ana Pérez', instant); await send(DEMO_PHONE, instant);
+        await send('1', instant); await send('Ana Pérez', instant);
         if (vet()) { await send('Max', instant); await send('perro', instant); await send('3 años', instant); }
       },
     },
@@ -75,7 +74,7 @@ export function buildSteps(app) {
     },
     {
       title: 'Urgencias: el bot no agenda',
-      note: 'Si detecta una urgencia, no agenda: da el teléfono de la clínica, marca la conversación como URGENTE y ofrece pasar a una persona. Lo escrito se guarda sin detalles de salud.',
+      note: 'Si detecta una urgencia, no agenda: da el número que corresponde (el de la clínica en su horario de atención; fuera de horario, el de emergencias que la clínica configuró), marca la conversación como URGENTE y ofrece pasar a una persona. Lo escrito se guarda sin detalles de salud.',
       highlight: ['.wa-device', '.live .feed'],
       run: ({ instant }) => send(g().urgent, instant),
     },

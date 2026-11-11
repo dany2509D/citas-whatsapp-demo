@@ -134,7 +134,7 @@ export function createLivePanel(app, { onShowChat } = {}) {
       h('ul', { class: 'rem-list' },
         dayBefore.map((r) => h('li', { class: ui.flash.has(r.apptId) ? 'flash' : '', 'data-flip': `rm:${r.apptId}` },
           chipIcon('clock', 'brand', 17),
-          h('span', null, h('b', null, `Día anterior · ${r.patient}`), h('small', null, `Se envía ${dateShort(r.due.slice(0, 10))} ${time12(r.due.slice(11, 16))} · cita ${stampShort(r.start)}`)),
+          h('span', null, h('b', null, `${r.kind === 'horas-antes' ? 'Horas antes' : 'Día anterior'} · ${r.patient}`), h('small', null, `Se envía ${dateShort(r.due.slice(0, 10))} ${time12(r.due.slice(11, 16))} · cita ${stampShort(r.start)}`)),
           h('span', { class: 'rem-list__act' }, h('span', { class: `badge badge--${stateBadge(r.state)}` }, REMINDER_LABEL[r.state] || 'Programado'),
             r.state === 'programado' || r.state === 'enviado' ? h('button', { class: 'btn btn--sm', type: 'button', onclick: () => simulate(() => app.controller.simulateDayBefore({ apptId: r.apptId })) }, 'Simular envío') : null))),
         follow.map((f) => h('li', { 'data-flip': `fu:${f.patientId}` },

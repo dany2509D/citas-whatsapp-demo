@@ -684,11 +684,18 @@ function stepConfirm(e, text, t) {
   else if (!conv.name) conv.name = d.name;
   e.touched.add(appt.id);
   e.log('cita', `Cita creada por el chat · ${d.name} · ${svc.name} · ${stampShort(appt.start)} · ${pro.name}`, appt.id);
-  e.say(fill(c.config.messages.confirm, {
+  e.say(reminderNote(fill(c.config.messages.confirm, {
     nombre: firstName(d.name), fecha: dateLong(appt.start.slice(0, 10)), hora: time12(appt.start.slice(11, 16)), servicio: svc.name, profesional: pro.name,
     mascota: d.pet ? `${d.pet.name} (${d.pet.species}, ${d.pet.age})` : '', clinica: e.T.name,
-  }), [{ label: 'Agendar otra cita', text: 'Agendar cita' }, ...MENU_ONLY]);
+  }), appt.reminderPlan), [{ label: 'Agendar otra cita', text: 'Agendar cita' }, ...MENU_ONLY]);
   reset(e);
+}
+
+/** El mensaje de confirmación dice cuándo saldrá de verdad el recordatorio (no promete «el día anterior» si ya pasó esa hora). */
+function reminderNote(text, plan) {
+  if (!plan || plan.kind === 'dia-anterior') return text;
+  if (plan.kind === 'horas-antes') return text.replace(/recordatorio el día anterior/i, `recordatorio ${plan.hours} ${plan.hours === 1 ? 'hora' : 'horas'} antes de su cita`);
+  return text.replace(/\n*Le enviaremos un recordatorio el día anterior\.\s*/i, '\n\n');
 }
 
 // --- d) Reprogramar y cancelar ---------------------------------------------------------------

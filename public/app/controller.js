@@ -4,6 +4,7 @@
 // el ritmo de WhatsApp (entregado, leído, "escribiendo…").
 import { epochNow, nowStamp, now, todayKey, addDays } from '../shared/time/panama.js';
 import { AIUnavailable, pingAI } from '../shared/chat-engine/ai-adapter.js';
+import { phoneDigits } from '../shared/chat-engine/nlu.js';
 import { UPCOMING, getAppt, getPatient, newId, upcomingForPhone } from './agenda.js';
 import { HUMAN_CHIP, chatIdentity, isUrgent, respond, startFollowup, startReminder, wantsHuman } from './bot.js';
 import { REDACTED_TEXT, looksClinical } from './privacy.js';
@@ -117,7 +118,7 @@ export function createController({ store, notify = () => {}, ai = { ping: pingAI
       const result = make(conv);
       if (!result) return;
       afterEffects(result.touched);
-      await deliver(conv, result.out);
+      await deliver(result.conv || conv, result.out);
     }).catch((e) => console.error(e));
     return queue;
   }
@@ -146,10 +147,21 @@ export function createController({ store, notify = () => {}, ai = { ping: pingAI
   ctl.simulateFollowup = ({ patientId = null } = {}) => botFirst((conv) => {
     const c = store.clinic();
     const items = computeFollowups(c, store.state.giro, todayKey());
-    const item = patientId ? items.find((i) => i.patientId === patientId) : (items.find((i) => i.state === 'por_enviar') || items.find((i) => i.state === 'programado'));
+    const pending = (i) => i.state === 'por_enviar' || i.state === 'programado';
+    const mine = phoneDigits(chatIdentity(conv, store.profile()).phone);
+    const own = items.find((i) => pending(i) && phoneDigits(getPatient(c, i.patientId)?.phone) === mine); // el aviso de quien está probando
+    const item = patientId ? items.find((i) => i.patientId === patientId) : (own || items.find((i) => i.state === 'por_enviar') || items.find(pending));
     if (!item) { pushSystem(conv, 'No hay seguimientos pendientes en este momento.'); return null; }
-    pushSystem(conv, `Seguimiento automático · ${store.profile().followupRule}`);
-    return startFollowup(c, conv, item.patientId, ctx());
+    // Un aviso va al chat de SU destinatario: si es otra persona, el chat actual se guarda en la bandeja y se abre el de ella
+    // (nunca llega a un chat el mensaje dirigido a otro paciente).
+    const who = getPatient(c, item.patientId);
+    let target = conv;
+    if (phoneDigits(who?.phone) !== mine) {
+      if (conv.messages.length) { store.newChat(); target = store.live(); }
+      pushSystem(target, `Seguimiento automático para ${who.name} · ${store.profile().followupRule}. Se abrió su chat; el anterior quedó guardado en la bandeja del panel.`);
+    } else pushSystem(target, `Seguimiento automático · ${store.profile().followupRule}`);
+    const r = startFollowup(c, target, item.patientId, ctx());
+    return r ? { ...r, conv: target } : null;
   });
 
   ctl.newChat = () => { store.newChat(); aiFailures = 0; sessionId = newId('s'); };

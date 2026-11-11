@@ -2,7 +2,7 @@
 // Regla de oro (CIT-RNF-02): un horario nunca queda asignado a dos citas del mismo profesional;
 // toda creación y todo movimiento pasan por slotProblem().
 import {
-  addDays, addMin, dateKey, dayOfWeek, diffMin, epochNow, fromMin, stampShort, toMin, weekDays,
+  addDays, addMin, dateKey, dayOfWeek, diffMin, epochNow, fromMin, nowStamp, stampShort, toMin, weekDays,
 } from '../shared/time/panama.js';
 import { phoneDigits } from '../shared/chat-engine/nlu.js';
 
@@ -141,7 +141,7 @@ export function suggestSlots(c, opts, n = 3, seen = []) {
   return pickSpread(freeSlots(c, opts).filter((s) => !skip.has(`${s.start}|${s.professionalId}`)), n);
 }
 
-export function createAppointment(c, { name, phone, serviceId, professionalId, start, origin = 'chat', pet = null, status = 'pendiente', force = false, ts = epochNow() }) {
+export function createAppointment(c, { name, phone, serviceId, professionalId, start, origin = 'chat', pet = null, status = 'pendiente', force = false, ts = epochNow(), live = true }) {
   const svc = getService(c, serviceId);
   if (!svc || svc.active === false) return { ok: false, reason: 'servicio' };
   if (!proOffers(c, professionalId, serviceId)) return { ok: false, reason: 'profesional' };
@@ -159,6 +159,7 @@ export function createAppointment(c, { name, phone, serviceId, professionalId, s
     minutes: svc.minutes, status, origin, pet: pet || (patient.pet ? { ...patient.pet } : null), createdAt: ts, reminder: 'programado',
     history: [], payment: null,
   };
+  if (live) appt.reminderPlan = planReminder(c, start, nowStamp()); // la semilla no lo usa: sus recordatorios ya están resueltos
   note(appt, origin === 'chat' ? 'Creada desde el chat de WhatsApp' : 'Creada desde el panel', ts);
   c.appointments.push(appt);
   return { ok: true, appt, patient };
@@ -178,6 +179,7 @@ export function moveAppointment(c, id, { start, professionalId } = {}, { notice 
   if (patientConflict(c, { phone: a.phone, patientId: a.patientId, start: s, minutes: a.minutes, ignoreId: a.id })) return { ok: false, reason: 'paciente_ocupado' };
   const old = { start: a.start, professionalId: a.professionalId };
   a.start = s; a.professionalId = pro; a.status = 'reprogramada'; a.rescheduled = true; a.reminder = 'programado';
+  a.reminderPlan = planReminder(c, s, nowStamp());
   if (notice) a.avoided = true;
   note(a, `Reprogramada: ${stampShort(old.start)} → ${stampShort(s)} (${ACTOR[actor] || actor}${notice ? '; con aviso por WhatsApp' : '; sin aviso'})`, ts);
   return { ok: true, appt: a, old };
@@ -242,13 +244,28 @@ export function kpis(c, nowDate) {
   };
 }
 
+/**
+ * Cuándo sale el recordatorio de una cita que se agenda ahora (CIT-RF-16). Normalmente, el día anterior a la hora configurada.
+ * Si esa hora ya pasó (p. ej. de noche, para una cita de mañana temprano), sale unas horas antes de la cita
+ * (por defecto 2, configurable con horasRecordatorioCercano); si ni eso cabe, no se programa ninguno.
+ * Devuelve { kind: 'dia-anterior' | 'horas-antes' | 'ninguno', due, hours? }. Nunca devuelve una hora pasada.
+ */
+export function planReminder(c, start, nowS) {
+  const dayBefore = `${addDays(start.slice(0, 10), -1)}T${c.config.reminderTime || '09:00'}`;
+  if (dayBefore > nowS) return { kind: 'dia-anterior', due: dayBefore };
+  const hours = Number(c.config.horasRecordatorioCercano ?? 2) || 2;
+  const near = addMin(start, -hours * 60);
+  if (near > nowS) return { kind: 'horas-antes', due: near, hours };
+  return { kind: 'ninguno', due: null };
+}
+
 export const reminderDue = (c, a) => `${addDays(a.start.slice(0, 10), -1)}T${c.config.reminderTime || '09:00'}`;
 
 /** Recordatorios "día anterior" de las próximas citas, en orden de envío. */
 export function dayBeforeList(c, nowS, limit = 8) {
   return c.appointments
-    .filter((a) => UPCOMING.has(a.status) && a.start >= nowS)
-    .map((a) => ({ kind: 'dia-anterior', apptId: a.id, due: reminderDue(c, a), state: a.reminder || 'programado', patient: a.name, start: a.start, serviceId: a.serviceId }))
+    .filter((a) => UPCOMING.has(a.status) && a.start >= nowS && a.reminderPlan?.kind !== 'ninguno')
+    .map((a) => ({ kind: a.reminderPlan?.kind || 'dia-anterior', apptId: a.id, due: a.reminderPlan?.due || reminderDue(c, a), state: a.reminder || 'programado', patient: a.name, start: a.start, serviceId: a.serviceId }))
     .sort((x, y) => (x.due < y.due ? -1 : 1))
     .slice(0, limit);
 }
