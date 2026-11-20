@@ -51,7 +51,6 @@ test('contacto: el diagnóstico abre WhatsApp +507 6663-2666 con el mensaje codi
   assert.equal(u.origin + u.pathname, 'https://wa.me/50766632666');
   assert.equal(u.searchParams.get('text'), 'Hola, vi la demo de citas por WhatsApp y quiero un diagnóstico');
   assert.ok(LINKS.diagnostico.includes(encodeURIComponent('diagnóstico')));
-  assert.equal(LINKS.formulario, 'https://panacealogic.dev/cuentanos-tu-proyecto?demo=citas');
   assert.ok(!LINKS.diagnostico.includes('cuentanos-tu-proyecto'));
 });
 

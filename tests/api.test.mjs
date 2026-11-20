@@ -70,9 +70,9 @@ test('validación de la petición', () => {
 });
 
 test('origen no permitido y cuerpo inválido', async () => {
-  const handler = createHandler({ env: { ANTHROPIC_API_KEY: 'k', ALLOWED_ORIGINS: 'https://citas.panacealogic.dev' }, getClient: async () => fake('{"reply":"ok","actions":[],"handoff":false}') });
+  const handler = createHandler({ env: { ANTHROPIC_API_KEY: 'k', ALLOWED_ORIGINS: 'https://citas-whatsapp-demo.vercel.app' }, getClient: async () => fake('{"reply":"ok","actions":[],"handoff":false}') });
   assert.equal((await handler(post(good, { origin: 'https://otro.com' }))).status, 403);
-  assert.equal((await handler(post(good, { origin: 'https://citas.panacealogic.dev' }))).status, 200);
+  assert.equal((await handler(post(good, { origin: 'https://citas-whatsapp-demo.vercel.app' }))).status, 200);
   assert.equal((await handler(new Request('http://x/api/chat', { method: 'POST', body: '{no' }))).status, 400);
   assert.equal((await handler(new Request('http://x/api/chat', { method: 'PUT' }))).status, 405);
 });

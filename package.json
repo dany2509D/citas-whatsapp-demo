@@ -2,7 +2,7 @@
   "name": "citas-whatsapp-demo",
   "version": "1.0.0",
   "private": true,
-  "description": "Demo de Panacea Logic AI: citas por WhatsApp para clínicas (fisioterapia, odontología y veterinaria). Sitio estático sin build; función serverless opcional para el modo IA real.",
+  "description": "Demo: citas por WhatsApp para clínicas (fisioterapia, odontología y veterinaria). Sitio estático sin build; función serverless opcional para el modo IA real.",
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",

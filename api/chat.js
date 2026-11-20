@@ -12,7 +12,7 @@
 //   ANTHROPIC_API_KEY   (obligatoria para activar la IA real)
 //   CLAUDE_MODEL        (opcional; por defecto claude-opus-5-5. Para menor costo y latencia: claude-haiku-5-5)
 //   CLAUDE_FALLBACKS    (opcional; "off" desactiva el respaldo de modelo ante un rechazo de seguridad)
-//   ALLOWED_ORIGINS     (opcional; lista separada por comas, p. ej. https://citas.panacealogic.dev)
+//   ALLOWED_ORIGINS     (opcional; lista separada por comas, p. ej. https://citas-whatsapp-demo.vercel.app)
 
 export const config = { path: '/api/chat' };
 

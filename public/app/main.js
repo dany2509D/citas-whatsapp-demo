@@ -71,7 +71,7 @@ function renderBar() {
 
 function renderFoot() {
   replace(foot,
-    h('p', null, 'Demo de Panacea Logic AI. Todo lo que ve es simulado: no se conecta a WhatsApp real ni se procesan pagos (Yappy, tarjeta, ACH y efectivo son solo ejemplos). Personas, teléfonos y datos son ficticios.'),
+    h('p', null, 'Demo. Todo lo que ve es simulado: no se conecta a WhatsApp real ni se procesan pagos (Yappy, tarjeta, ACH y efectivo son solo ejemplos). Personas, teléfonos y datos son ficticios.'),
     store.persistent ? null : h('p', null, icon('alert', { size: 15 }), ' Su navegador bloquea el almacenamiento: la demo funciona, pero los cambios no se conservan al recargar.'));
 }
 
@@ -107,7 +107,7 @@ function render() {
   if (route === 'demo') { unmount = mountDemo(view, app); title = `Demo del cliente · ${store.profile().name}`; }
   else if (route === 'admin') { unmount = mountAdmin(view, app, sub); title = `Panel de recepción · ${store.profile().name}`; }
   else { unmount = mountHome(view, app); }
-  document.title = `${title} · Panacea Logic AI`;
+  document.title = `${title}`;
   renderBar(); renderFoot();
   const key = `${route}/${sub}`;
   const entering = key !== lastKey;

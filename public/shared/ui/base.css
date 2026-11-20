@@ -1,8 +1,8 @@
-/* Base común de las demos de Panacea Logic AI — sistema visual claro, de bordes finos.
+/* Base común de las demos — sistema visual claro, de bordes finos.
    Lienzo blanco, contenedores definidos por una línea de 1 px (no por sombras), tipografía Inter
    (titulares en peso 500), etiquetas en píldora, botones de 8 px y tarjetas de 12 px.
    El color de acento es la marca de cada giro (--brand): las acciones de la clínica (agendar, confirmar, crear)
-   van en ese color; el negro queda para los controles de Panacea (presentación, reiniciar, controles de la demo).
+   van en ese color; el negro queda para los controles de la demo (presentación, reiniciar, controles de la demo).
    Contraste AA; foco visible; sin dependencias externas. */
 
 @font-face {
@@ -122,7 +122,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .demo-banner__cta:hover { background: #e5e5e5; }
 .demo-banner :focus-visible { outline-color: #fff; }
 
-/* Botones: contorno por defecto; .btn--accent = acción de la clínica (color del giro); .btn--primary = control de Panacea (negro) */
+/* Botones: contorno por defecto; .btn--accent = acción de la clínica (color del giro); .btn--primary = control de la demo (negro) */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 16px;
   border: 1px solid var(--line); border-radius: var(--r-sm); background: #fff; color: var(--ink); font-size: var(--fs-sm); font-weight: 500;

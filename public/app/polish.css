@@ -282,7 +282,7 @@ main[data-enter] .hero::before { animation: fade 600ms ease-out; }
 
 /* ───────────── 10. Rediseño: identidad del giro y composición ─────────────
    La marca de la clínica pasa de «acento» a protagonista: escenario del producto teñido con su color, palabra clave del
-   titular, íconos en recuadros tintados y un cierre a todo color. Lo de Panacea (controles de la demo) va en negro. */
+   titular, íconos en recuadros tintados y un cierre a todo color. Los controles de la demo (controles de la demo) va en negro. */
 
 /* Íconos en recuadro tintado con el color de su función (antes: recuadro blanco con borde) */
 .chip-ic { --tone: var(--fog); background: color-mix(in srgb, var(--tone) 10%, #fff); border-color: color-mix(in srgb, var(--tone) 26%, #fff); color: var(--tone); border-radius: 10px; }
@@ -358,7 +358,7 @@ main[data-enter] .hero .mock { animation: fade 500ms var(--ease-out) backwards; 
 .btn--line:not([disabled]):hover { background: rgba(255, 255, 255, .12); border-color: #fff; }
 .cta-band :focus-visible { outline-color: #fff; }
 
-/* Demo del cliente: los controles de la demo son de Panacea, no de la clínica → consola negra */
+/* Demo del cliente: los controles de la demo son de la demo, no de la clínica → consola negra */
 .tools { background: #0a0a0a; border-color: #0a0a0a; color: #f5f5f5; box-shadow: var(--sh-md); }
 .tools h2 { color: #fff; }
 .tools .btn { background: #171717; border-color: #3d3d3d; color: #fff; box-shadow: none; }

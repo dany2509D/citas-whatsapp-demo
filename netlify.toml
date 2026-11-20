@@ -1,4 +1,4 @@
-# Despliegue en Netlify (p. ej. el subdominio citas.panacealogic.dev).
+# Despliegue en Netlify (p. ej. el subdominio citas-whatsapp-demo.vercel.app).
 # Sitio estático: no hay paso de compilación. La función /api/chat es opcional (modo "IA real").
 [build]
   publish = "public"

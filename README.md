@@ -1,9 +1,9 @@
-# Citas por WhatsApp para clínicas · Demo de Panacea Logic AI
+# Citas por WhatsApp para clínicas · Demo
 
 Demo comercial para reuniones de venta con micro, pequeñas y medianas empresas. Muestra en 2 minutos que un
 **asistente de WhatsApp agenda, confirma y recuerda citas solo**, y que la clínica lo ve todo en su panel.
 
-- Subdominio previsto: `citas.panacealogic.dev`
+- Subdominio previsto: `citas-whatsapp-demo.vercel.app`
 - Sitio **estático** (HTML + CSS + JavaScript con módulos nativos): **no hay paso de compilación** ni framework.
 - Todo es **ficticio y simulado**: marcas, personas, teléfonos (+507 6000-xxxx), WhatsApp y pagos.
 - Giros: *Centro de Fisioterapia Movimiento*, *Clínica Dental Sonrisa* y *Veterinaria Patitas*.
@@ -39,8 +39,8 @@ npm test
 | `#/admin` | Panel de recepción. Se entra con el botón **Entrar como administrador** (sin contraseña) |
 | `#/admin/agenda` · `conversaciones` · `seguimiento` · `configuracion` | Secciones del panel |
 
-Botones siempre visibles: **▶ Presentación** y **↺ Reiniciar demo**. El banner fijo de arriba enlaza a
-panacealogic.dev y al diagnóstico gratis de 30 minutos.
+Botones siempre visibles: **▶ Presentación** y **↺ Reiniciar demo**. El banner fijo de arriba avisa que es una demo con datos ficticios y
+ofrece el diagnóstico gratis de 30 minutos.
 
 ---
 
@@ -50,7 +50,7 @@ panacealogic.dev y al diagnóstico gratis de 30 minutos.
 
 1. Suba esta carpeta a un repositorio de git y créelo como sitio en Netlify.
 2. Sin comando de compilación. Directorio de publicación: `public`. Funciones: `api` (ya está en `netlify.toml`).
-3. En *Domain management* agregue `citas.panacealogic.dev` (registro CNAME hacia el sitio de Netlify; HTTPS automático).
+3. En *Domain management* agregue `citas-whatsapp-demo.vercel.app` (registro CNAME hacia el sitio de Netlify; HTTPS automático).
 
 Otros hostings estáticos: publique solo la carpeta `public/`. Sin `/api/chat` la demo funciona igual en modo guion.
 
@@ -62,7 +62,7 @@ El modo guion es el predeterminado y no necesita nada. Para activar **IA real**:
    **La clave solo vive en esa variable del servidor**: nunca la escriba en el código, en `.env` dentro del repo ni en el navegador.
 2. Opcionales: `CLAUDE_MODEL` (por defecto `claude-opus-5-5`; para menor costo y latencia pruebe `claude-haiku-5-5`),
    `CLAUDE_FALLBACKS=off` (desactiva el respaldo de modelo ante un rechazo de seguridad) y
-   `ALLOWED_ORIGINS=https://citas.panacealogic.dev` (limita quién puede llamar a la función).
+   `ALLOWED_ORIGINS=https://citas-whatsapp-demo.vercel.app` (limita quién puede llamar a la función).
 3. En la demo, bajo el teléfono, elija **IA real**. Si `/api/chat` no existe, no tiene clave o falla, la demo avisa y
    **se queda (o vuelve) al modo guion sin romper nada**.
 
@@ -166,7 +166,7 @@ tarjetas de 12 px, botones de 8 px, etiquetas en píldora y titulares en Inter p
 La portada pone primero el selector de giro, un titular de dos líneas y el botón «Probar el asistente» (se ve sin desplazarse en 1366 × 768 y en móvil); a partir de 1280 px se reparte en dos columnas (texto a la izquierda; teléfono con la conversación y agenda de mañana a la derecha) para no dejar blanco a los lados, y por debajo se apila y se centra. En «Cómo funciona», cada paso trae un fragmento verdadero (la respuesta real del asistente, el mensaje de confirmación de la configuración y la agenda). Los colores, radios y la escala tipográfica son
 variables CSS en `public/shared/ui/base.css`. El acento es la marca de cada giro (`--brand`, `--brand-soft`, `--accent`…), que `main.js`
 aplica desde la paleta de `public/app/data/templates.js`; las acciones de la clínica (probar el asistente, nueva cita, confirmar, crear, mover) van en ese color
-(`.btn--accent`) y el negro (`.btn--primary`) queda para los controles de Panacea: Presentación, Reiniciar demo y controles de la demo. Los íconos son SVG propios
+(`.btn--accent`) y el negro (`.btn--primary`) queda para los controles de la demo: Presentación, Reiniciar demo y controles de la demo. Los íconos son SVG propios
 (`public/shared/ui/icons.js`): en la interfaz no hay emojis, solo dentro de los mensajes del bot.
 
 **Acabados.** La capa final `public/app/polish.css` (se carga al final) define tiempos y curvas tipo resorte, sombras pequeñas en capas, el color de estado
@@ -213,7 +213,7 @@ chat por la interfaz y con la tecla Enter, panel, arrastrar una cita, configurac
 
 **No verificado (pendiente):**
 - Una llamada **real** a la API de Claude (no hay clave en este equipo): el flujo de IA se probó con un cliente de prueba.
-- Despliegue real en Netlify y el subdominio `citas.panacealogic.dev`.
+- Despliegue real en Netlify y el subdominio `citas-whatsapp-demo.vercel.app`.
 - Lighthouse, Firefox, Safari iOS y un teléfono real.
 - Uso con lector de pantalla (se cuidó semántica, etiquetas y foco, pero no se probó con uno).
 
@@ -236,4 +236,4 @@ git push -u origin main
 
 ## Despliegue
 
-Publicado en Vercel (https://citas.panacealogic.dev). Cada `git push` a `main` despliega solo; `vercel.json` fija `public` como salida y no hay paso de compilación. El modo IA real necesita la variable `ANTHROPIC_API_KEY` en Vercel (sin ella la demo sigue en modo guion).
+Publicado en Vercel (https://citas-whatsapp-demo.vercel.app). Cada `git push` a `main` despliega solo; `vercel.json` fija `public` como salida y no hay paso de compilación. El modo IA real necesita la variable `ANTHROPIC_API_KEY` en Vercel (sin ella la demo sigue en modo guion).

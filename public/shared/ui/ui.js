@@ -9,9 +9,7 @@ export const CONTACT = {
 };
 
 export const LINKS = {
-  site: 'https://panacealogic.dev',
   diagnostico: `https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent(CONTACT.message)}`,
-  formulario: 'https://panacealogic.dev/cuentanos-tu-proyecto?demo=citas',
 };
 
 const calm = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -20,8 +18,7 @@ const calm = () => globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').m
 export function mountBanner(container) {
   const banner = h('div', { class: 'demo-banner', role: 'region', 'aria-label': 'Aviso de demostración' },
     h('p', { class: 'demo-banner__text' },
-      'Demo de ', h('a', { href: LINKS.site, target: '_blank', rel: 'noopener' }, 'Panacea Logic AI'),
-      ' · Datos ficticios · No ingrese información real'),
+      'Demo · Datos ficticios · No ingrese información real'),
     h('a', { class: 'demo-banner__cta', href: LINKS.diagnostico, target: '_blank', rel: 'noopener', 'aria-label': 'Agende un diagnóstico gratis de 30 minutos por WhatsApp (se abre en una pestaña nueva)' },
       'Agende un diagnóstico gratis de 30 minutos'));
   container.append(banner);
