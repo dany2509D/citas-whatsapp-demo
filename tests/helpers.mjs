@@ -1,4 +1,13 @@
 import { setNow, now } from '../public/shared/time/panama.js';
+import { setHolidayCalendar } from '../public/shared/time/feriados-pa.js';
+
+// La semana de referencia de las pruebas (9–14 nov 2026) incluye el 10 de noviembre, que es feriado en Panamá.
+// Las pruebas antiguas se escribieron para una semana laboral normal: aquí se usan SIN feriados.
+// Las pruebas de feriados (tests/feriados.test.mjs) activan el calendario real con realHolidays().
+const NO_HOLIDAYS = () => [];
+setHolidayCalendar(NO_HOLIDAYS);
+export const realHolidays = () => setHolidayCalendar(null);
+export const noHolidays = () => setHolidayCalendar(NO_HOLIDAYS);
 import { buildClinic, emptyConversation } from '../public/app/data/seed.js';
 import { TEMPLATES } from '../public/app/data/templates.js';
 import { respond } from '../public/app/bot.js';

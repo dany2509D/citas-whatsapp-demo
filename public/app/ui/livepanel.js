@@ -6,7 +6,7 @@ import { flip, rollTo } from '../../shared/ui/motion.js';
 import {
   addDays, dateLong, dateShort, dayOfWeek, mondayOf, nowStamp, stampShort, time12, todayKey, weekDays,
 } from '../../shared/time/panama.js';
-import { dayBeforeList, getAppt, getService } from '../agenda.js';
+import { closureOf, dayBeforeList, dayHours, getAppt, getService } from '../agenda.js';
 import { computeFollowups, STATE_LABEL } from '../followups.js';
 import { openApptModal } from './appt-modal.js';
 import { REMINDER_LABEL, apptSummary, avatar, badge, chipIcon, feedChip, whenLabel } from './common.js';
@@ -78,9 +78,10 @@ export function createLivePanel(app, { onShowChat } = {}) {
 
   function dayView() {
     const list = c().appointments.filter((a) => a.start.slice(0, 10) === ui.dayKey);
-    const closed = !c().config.hours[dayOfWeek(ui.dayKey)];
+    const closed = !dayHours(c(), ui.dayKey);
+    const why = closureOf(c(), ui.dayKey);
     return h('div', null,
-      closed ? h('p', { class: 'empty' }, 'La clínica no atiende este día.') : null,
+      closed ? h('p', { class: 'empty' }, why ? `Cerrado: ${why.name}.` : 'La clínica no atiende este día.') : null,
       h('div', { class: 'pro-cols' }, pros().map((p) => {
         const mine = list.filter((a) => a.professionalId === p.id).sort((x, y) => (x.start < y.start ? -1 : 1));
         return h('div', { class: 'pro-col' }, h('h4', null, avatar(p.name), h('span', null, p.name, h('small', null, p.specialty))),

@@ -288,6 +288,9 @@ export function buildClinic(id, nowDate) {
     slotMinutes: 30,
     leadMinutes: 60,
     reminderTime: '09:00',
+    // Solo la demo comercial: pista con un paciente ficticio y búsqueda de citas con otro número. En producción: false (ver bot.js, isDemo).
+    modoDemo: true,
+    cierres: { feriadosNacionales: true, tradicionales: true, abiertoEn: [], extra: [] },
     services: T.services.map((s) => ({ ...s, active: true })),
     professionals: T.pros.map((p) => ({ id: p.id, name: p.name, specialty: p.specialty, days: [...p.days], serviceIds: [...p.services], active: true })),
     messages: { ...T.messages },

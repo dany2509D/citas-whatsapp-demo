@@ -16,7 +16,7 @@ const MSG_COMMON = {
   urgent: 'Por lo que describe, esto puede ser una urgencia. Por favor llame ahora al {telefono} o acuda al servicio de urgencias más cercano.\n\nPor este medio no agendo urgencias. ¿Desea que una persona del equipo le contacte?',
   handoff: 'Con gusto. Una persona del equipo de {clinica} le escribirá por este chat en horario de atención. Si desea volver al asistente, escriba «menú».',
   confirm: '✅ Listo, {nombre}. Su cita quedó agendada:\n📅 {fecha} a las {hora}\n🩺 {servicio} con {profesional}\n\nLe enviaremos un recordatorio el día anterior. ¡Le esperamos!',
-  reminder: 'Hola {nombre}, le recordamos su cita mañana a las {hora} ¿Confirma?\n1. Sí\n2. Reprogramar',
+  reminder: 'Hola {nombre}, le recordamos su cita {cuando} a las {hora} ¿Confirma?\n1. Sí\n2. Reprogramar',
 };
 
 export const TEMPLATES = {

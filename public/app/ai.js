@@ -1,24 +1,28 @@
 // Modo "IA real" del lado del navegador. La IA solo PROPONE acciones; aquí se aplican únicamente
 // las de la lista permitida, validando cada payload contra la agenda real (BASE: contrato de /api/chat).
 import { askAI } from '../shared/chat-engine/ai-adapter.js';
-import { parseName, parsePhone, phoneDigits } from '../shared/chat-engine/nlu.js';
+import { isPanamaMobile, parseName, parsePhone, phoneDigits } from '../shared/chat-engine/nlu.js';
 import { clock, dateShort, stamp, stampLong, stampShort, time12, todayKey } from '../shared/time/panama.js';
 import {
   REASONS, UPCOMING, activeServices, createAppointment, earliestStart, freeSlots, getAppt, getPro, getService, moveAppointment, proOffers,
-  setStatus, slotProblem, upcomingForPhone,
+  setStatus, slotProblem, upcomingClosures, upcomingForPhone,
 } from './agenda.js';
 import { hoursSummary } from './format.js';
-import { runFlow } from './bot.js';
+import { isDemo, runFlow } from './bot.js';
 
 export const ALLOWED = ['proponer_horarios', 'crear_cita', 'reprogramar_cita', 'cancelar_cita', 'confirmar_cita', 'marcar_urgente', 'pasar_a_persona'];
 const STAMP_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 const short = (v, n = 40) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
 
-/** Teléfonos que la persona ya escribió en este chat (con ellos se pueden buscar sus citas). */
-function knownPhones(conv) {
+/**
+ * Teléfonos con los que se buscan (y se pueden tocar) citas. En producción: SOLO el número del chat (el de WhatsApp que escribe).
+ * En la demo comercial (modoDemo) también los que la persona escribió, para poder probar con los pacientes ficticios.
+ */
+function knownPhones(c, conv) {
   const set = new Set();
-  for (const m of conv.messages) if (m.from === 'user') { const p = parsePhone(m.text || ''); if (p) set.add(phoneDigits(p)); }
-  if (conv.phone) set.add(phoneDigits(conv.phone));
+  if (isDemo(c)) for (const m of conv.messages) if (m.from === 'user') { const p = parsePhone(m.text || ''); if (p) set.add(phoneDigits(p)); }
+  const own = conv.phone || conv.persona?.phone;
+  if (own) set.add(phoneDigits(own));
   return set;
 }
 
@@ -49,7 +53,7 @@ function slotsForContext(c, nowS) {
 
 export function buildAIContext(c, conv, profile, nowDate) {
   const nowS = stamp(nowDate);
-  const phones = knownPhones(conv);
+  const phones = knownPhones(c, conv);
   const citas = [...phones].flatMap((p) => upcomingForPhone(c, p, nowS)).slice(0, 6).map((a) => ({
     id: a.id, servicioId: a.serviceId, profesionalId: a.professionalId, inicio: a.start, estado: a.status, nombre: a.name,
   }));
@@ -62,6 +66,7 @@ export function buildAIContext(c, conv, profile, nowDate) {
     profesionales: c.config.professionals.filter((p) => p.active !== false).map((p) => ({ id: p.id, nombre: p.name, especialidad: p.specialty, servicioIds: p.serviceIds })),
     mensajes: c.config.messages,
     horariosLibres: slotsForContext(c, nowS),
+    cierresProximos: upcomingClosures(c, todayKey(), 45).map((x) => ({ fecha: x.date, motivo: x.name })),
     citasDelPaciente: citas,
     paciente: { nombre: conv.name || patient?.name || '', telefono: conv.phone || '', mascota: patient?.pet || null },
   };
@@ -76,7 +81,7 @@ export function historyForAI(conv, max = 20) {
 /** Aplica las acciones propuestas. Devuelve { errors, chips, touched }. Nada se aplica sin pasar la validación. */
 export function applyActions(c, conv, actions, ctx) {
   const errors = []; const chips = []; const touched = new Set();
-  const phones = knownPhones(conv);
+  const phones = knownPhones(c, conv);
   const nowS = stamp(ctx.now);
   const log = (...a) => ctx.log?.(...a);
   const own = (id) => { const a = getAppt(c, id); return a && UPCOMING.has(a.status) && phones.has(phoneDigits(a.phone)) ? a : null; };
@@ -98,6 +103,7 @@ export function applyActions(c, conv, actions, ctx) {
         const name = parseName(short(p.nombre, 60)); const phone = parsePhone(short(p.telefono, 30));
         const pet = c.giro === 'vet' ? { name: short(p.mascota?.nombre, 30), species: short(p.mascota?.especie, 20), age: short(p.mascota?.edad, 20) } : null;
         if (!svc || !STAMP_RE.test(p.inicio || '') || !name || !phone) { errors.push({ type: act.type, message: 'faltan datos para crear la cita' }); break; }
+        if (!isPanamaMobile(phone)) { errors.push({ type: act.type, message: 'el teléfono debe ser un celular de Panamá (6XXX-XXXX)' }); break; }
         if (pet && !(pet.name && pet.species && pet.age)) { errors.push({ type: act.type, message: 'faltan los datos de la mascota' }); break; }
         if (p.inicio < nowS) { errors.push({ type: act.type, message: 'ese horario ya pasó' }); break; }
         const res = createAppointment(c, { name, phone, serviceId: svc.id, professionalId: p.profesionalId, start: p.inicio, origin: 'chat', pet });
