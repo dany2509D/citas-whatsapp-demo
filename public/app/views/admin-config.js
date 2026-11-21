@@ -4,9 +4,10 @@
 import { h, clear } from '../../shared/ui/dom.js';
 import { icon } from '../../shared/ui/icons.js';
 import { confirmDialog, toast } from '../../shared/ui/ui.js';
-import { DAYS, addDays, dateLong, todayKey } from '../../shared/time/panama.js';
+import { DAYS, addDays, dateLong, dayOfWeek, todayKey } from '../../shared/time/panama.js';
+import { holidaysBetween } from '../../shared/time/feriados-pa.js';
 import { reducedMotion } from '../../shared/ui/motion.js';
-import { UPCOMING, newId } from '../agenda.js';
+import { DEFAULT_CIERRES, UPCOMING, newId } from '../agenda.js';
 import { fill, hoursSummary } from '../format.js';
 import { cardHead } from '../ui/common.js';
 
@@ -17,7 +18,7 @@ const MSG = {
   pricesOutro: ['Precios: cierre (formas de pago)', ''],
   location: ['Ubicación', '{direccion} {telefono} {horario} {clinica}'],
   confirm: ['Cita confirmada', '{nombre} {fecha} {hora} {servicio} {profesional} {mascota} {clinica}'],
-  reminder: ['Recordatorio del día anterior', '{nombre} {hora} {fecha} {servicio} {profesional}'],
+  reminder: ['Recordatorio del día anterior', '{nombre} {cuando} {hora} {fecha} {servicio} {profesional}'],
   followup: ['Seguimiento', '{nombre} {mascota} {clinica}'],
   handoff: ['Pasar a una persona', '{clinica}'],
   urgent: ['Urgencia', '{telefono} {clinica}'],
@@ -34,6 +35,7 @@ export const validEmergencyPhone = (v) => {
 };
 
 let pageKey = 'datos'; // última sección vista
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 
 export function mount(root, app) {
   const { store } = app;
@@ -118,6 +120,59 @@ export function mount(root, app) {
         field({ id: 'cfg-lead', label: 'Anticipación mínima para agendar (minutos)', type: 'number', value: cfg.leadMinutes ?? 60, attrs: { min: 0, max: 1440, step: 15 }, validate: (v) => (v !== '' && +v >= 0 && +v <= 1440 ? null : 'Escriba un número entre 0 y 1440.'), save: (v) => { cfg.leadMinutes = +v; } })));
   };
 
+  // 2b. Feriados de Panamá y cierres propios (el asistente no ofrece ni acepta citas esos días)
+  const feriadosBox = h('div');
+  function paintFeriados() {
+    const cfg = c().config;
+    if (!cfg.cierres) cfg.cierres = { ...DEFAULT_CIERRES, abiertoEn: [], extra: [] };
+    const z = cfg.cierres;
+    const today = todayKey();
+    const upcoming = holidaysBetween(today, addDays(today, 365)).filter((x) => cfg.hours[dayOfWeek(x.date)]);
+    const repaint = () => { saved(); paintFeriados(); };
+    const label = (k) => cap(dateLong(k));
+    const err = h('span', { class: 'field__error', hidden: true, role: 'alert' });
+    const newDate = h('input', { id: 'cz-date', type: 'date', min: today });
+    const newName = h('input', { id: 'cz-name', type: 'text', placeholder: 'Ej.: Vacaciones del equipo', maxlength: 60 });
+    const addOwn = () => {
+      const date = newDate.value; const name = newName.value.trim();
+      const msg = !date ? 'Elija la fecha del cierre.' : date < today ? 'La fecha ya pasó.' : !name ? 'Escriba el motivo (lo verá el paciente).' : (z.extra || []).some((x) => x.date === date) ? 'Ya hay un cierre ese día.' : null;
+      if (msg) { err.textContent = msg; err.hidden = false; return; }
+      const future = c().appointments.filter((a) => a.start.startsWith(date) && UPCOMING.has(a.status)).length;
+      z.extra = [...(z.extra || []), { date, name }].sort((a, b) => (a.date < b.date ? -1 : 1));
+      repaint();
+      if (future) toast(`Ese día ya tiene ${future} ${future === 1 ? 'cita' : 'citas'}: muévalas o cancélelas desde la agenda.`, { kind: 'warn', ms: 4000 });
+    };
+    clear(feriadosBox).append(h('section', { class: 'card', 'aria-labelledby': 'cfg-fer' },
+      cardHead('calendar', 'Feriados y cierres', null, 'cfg-fer'),
+      h('p', { class: 'field__hint' }, 'Los días cerrados no se ofrecen en el chat, no se pueden agendar ni mover citas a ellos y, si alguien pregunta, el asistente explica el motivo. El Gobierno a veces decreta días libres adicionales: agréguelos como cierre propio. Confirme cada año la lista oficial del MITRADEL.'),
+      h('div', { class: 'checks', style: { margin: '8px 0 12px' } },
+        toggle('cz-nac', 'Cerrar en los feriados nacionales', z.feriadosNacionales !== false, (on) => { z.feriadosNacionales = on; paintFeriados(); }),
+        toggle('cz-trad', 'Cerrar también lunes de Carnaval y 4 de noviembre (tradicionales)', z.tradicionales !== false, (on) => { z.tradicionales = on; paintFeriados(); })),
+      h('h4', null, 'Próximos feriados en días que usted abre'),
+      upcoming.length ? h('div', null, upcoming.map((x) => {
+        const applies = x.kind === 'nacional' ? z.feriadosNacionales !== false : z.tradicionales !== false;
+        const open = (z.abiertoEn || []).includes(x.date);
+        return h('div', { class: 'hours-row' },
+          h('strong', null, label(x.date)),
+          h('span', null, x.name, x.kind === 'tradicional' ? h('small', { class: 'field__hint' }, ' · tradicional') : null),
+          applies
+            ? toggle(`cz-o-${x.date}`, 'Abrimos ese día', open, (on) => { z.abiertoEn = on ? [...new Set([...(z.abiertoEn || []), x.date])] : (z.abiertoEn || []).filter((d) => d !== x.date); paintFeriados(); })
+            : h('span', { class: 'field__hint' }, 'Abierto (no se cierra este tipo de feriado)'));
+      })) : h('p', { class: 'field__hint' }, 'No hay feriados en los próximos 12 meses en días que la clínica abre.'),
+      h('h4', { style: { marginTop: '16px' } }, 'Cierres propios'),
+      (z.extra || []).filter((x) => x.date >= today).length
+        ? h('div', null, (z.extra || []).filter((x) => x.date >= today).map((x) => h('div', { class: 'hours-row' },
+          h('strong', null, label(x.date)), h('span', null, x.name),
+          h('button', { class: 'btn btn--sm btn--danger-soft', type: 'button', onclick: () => { z.extra = z.extra.filter((y) => y.date !== x.date); repaint(); } }, 'Quitar'))))
+        : h('p', { class: 'field__hint' }, 'Sin cierres propios (vacaciones, inventario, capacitación…).'),
+      h('div', { class: 'cfg__grid', style: { marginTop: '8px' } },
+        h('div', { class: 'field' }, h('label', { for: 'cz-date' }, 'Fecha'), newDate),
+        h('div', { class: 'field' }, h('label', { for: 'cz-name' }, 'Motivo'), newName),
+        h('div', { class: 'field', style: { alignSelf: 'end' } }, h('button', { class: 'btn btn--sm', type: 'button', onclick: addOwn }, 'Agregar cierre'))),
+      err));
+  }
+  const horarioYFeriados = () => h('div', { class: 'cfg' }, horario(), feriadosBox);
+
   // 3. Servicios
   const servicios = () => h('section', { class: 'card', 'aria-labelledby': 'cfg-svc' },
     cardHead('list', 'Servicios: duración y precio', null, 'cfg-svc'),
@@ -163,7 +218,7 @@ export function mount(root, app) {
   const mensajes = () => {
     const cfg = c().config; const T = store.profile();
     const sample = () => ({
-      clinica: T.name, nombre: 'Ana', fecha: dateLong(addDays(todayKey(), 1)), hora: '8:00 a. m.', servicio: cfg.services[0]?.name || '', profesional: cfg.professionals[0]?.name || '',
+      clinica: T.name, nombre: 'Ana', cuando: 'mañana', fecha: dateLong(addDays(todayKey(), 1)), hora: '8:00 a. m.', servicio: cfg.services[0]?.name || '', profesional: cfg.professionals[0]?.name || '',
       mascota: 'Luna', direccion: cfg.address, telefono: cfg.phone, horario: hoursSummary(c()),
     });
     return h('section', { class: 'card', 'aria-labelledby': 'cfg-msg' },
@@ -189,7 +244,7 @@ export function mount(root, app) {
   };
 
   // Menú fijo por secciones: salta a cada bloque y marca en cuál se está leyendo
-  const sections = [['datos', 'Clínica', 'map', datos()], ['horario', 'Horario', 'clock', horario()], ['servicios', 'Servicios', 'list', servicios()],
+  const sections = [['datos', 'Clínica', 'map', datos()], ['horario', 'Horario', 'clock', horarioYFeriados()], ['servicios', 'Servicios', 'list', servicios()],
     ['profesionales', 'Profesionales', 'users', prosBox], ['mensajes', 'Mensajes', 'message', mensajes()], ['urgencias', 'Urgencias', 'alert', urgencias()]];
   // Una sola sección a la vez (paginada): el menú cambia de página y recuerda en cuál se estaba.
   let current = pageKey;
@@ -218,6 +273,7 @@ export function mount(root, app) {
   root.append(h('div', { class: 'cfg' }, h('p', { class: 'autosave' }, icon('check-circle', { size: 17 }), 'Los cambios se guardan solos: cada cambio válido se aplica al instante en el asistente.'),
     h('div', { class: 'cfg-layout' }, nav, h('div', { class: 'cfg' }, sections.map((x) => x[3]), pager))));
   paintPros();
+  paintFeriados();
   show(current);
   return () => { clearTimeout(savedTimer); };
 }

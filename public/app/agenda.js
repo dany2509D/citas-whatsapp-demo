@@ -5,6 +5,7 @@ import {
   addDays, addMin, dateKey, dayOfWeek, diffMin, epochNow, fromMin, nowStamp, stampShort, toMin, weekDays,
 } from '../shared/time/panama.js';
 import { phoneDigits } from '../shared/chat-engine/nlu.js';
+import { holidaysBetween, holidaysOn } from '../shared/time/feriados-pa.js';
 
 export const STATUS = {
   pendiente: 'Pendiente', confirmada: 'Confirmada', reprogramada: 'Reprogramada',
@@ -32,20 +33,51 @@ export const REASONS = {
   ocupado: 'Ese horario ya está ocupado para ese profesional.',
   fuera_de_horario: 'Queda fuera del horario de atención.',
   cerrado: 'La clínica no atiende ese día.',
+  feriado: 'Ese día es feriado o la clínica cierra.',
   almuerzo: 'Coincide con la hora de almuerzo.',
   profesional_no_atiende: 'Ese profesional no atiende ese día.',
   profesional: 'Ese profesional no ofrece este servicio.',
   servicio: 'Ese servicio no está disponible.',
   paciente_ocupado: 'Ese paciente ya tiene otra cita que se cruza con ese horario.',
   estado: 'Esa cita ya no se puede mover.',
+  pasado: 'Ese horario ya pasó.',
   no_existe: 'No se encontró la cita.',
 };
 
-export const dayHours = (c, key) => c.config.hours[dayOfWeek(key)] || null;
+/**
+ * Feriados y cierres (c.config.cierres):
+ *   feriadosNacionales (true): cerrar los feriados nacionales de Panamá (ver shared/time/feriados-pa.js).
+ *   tradicionales (true): cerrar también los días tradicionales (lunes de Carnaval, 4 de noviembre).
+ *   abiertoEn ([]): fechas 'YYYY-MM-DD' en que la clínica abre aunque sea feriado.
+ *   extra ([{ date, name }]): cierres propios (vacaciones, inventario, un «puente» decretado).
+ */
+export const DEFAULT_CIERRES = { feriadosNacionales: true, tradicionales: true, abiertoEn: [], extra: [] };
+
+/** ¿Por qué cierra la clínica ese día? { name, kind: 'nacional' | 'tradicional' | 'propio' } o null (abre normal). */
+export function closureOf(c, key) {
+  const z = c.config.cierres || DEFAULT_CIERRES;
+  const day = String(key).slice(0, 10);
+  const own = (z.extra || []).find((x) => x.date === day);
+  if (own) return { name: own.name || 'Cierre de la clínica', kind: 'propio' };
+  if ((z.abiertoEn || []).includes(day)) return null;
+  const h = holidaysOn(day).find((x) => (x.kind === 'nacional' ? z.feriadosNacionales !== false : z.tradicionales !== false));
+  return h ? { name: h.name, kind: h.kind } : null;
+}
+
+/** Feriados y cierres que caen en días que la clínica normalmente abre, desde fromKey durante `days` días. */
+export function upcomingClosures(c, fromKey, days = 30) {
+  const to = addDays(fromKey, days - 1);
+  const dates = new Set([...holidaysBetween(fromKey, to).map((h) => h.date), ...(c.config.cierres?.extra || []).map((x) => x.date).filter((d) => d >= fromKey && d <= to)]);
+  return [...dates].sort().map((date) => ({ date, ...closureOf(c, date) })).filter((x) => x.name && c.config.hours[dayOfWeek(x.date)]);
+}
+
+/** Horario de ese día; null si la clínica no abre (día libre de la semana, feriado o cierre propio). */
+export const dayHours = (c, key) => (closureOf(c, key) ? null : c.config.hours[dayOfWeek(key)] || null);
 
 /** null si el horario es válido; si no, el motivo ('cerrado', 'ocupado', …). */
 export function slotProblem(c, proId, start, minutes, ignoreId = null) {
   const key = start.slice(0, 10);
+  if (c.config.hours[dayOfWeek(key)] && closureOf(c, key)) return 'feriado';
   const h = dayHours(c, key);
   if (!h) return 'cerrado';
   const p = getPro(c, proId);
@@ -145,6 +177,7 @@ export function createAppointment(c, { name, phone, serviceId, professionalId, s
   const svc = getService(c, serviceId);
   if (!svc || svc.active === false) return { ok: false, reason: 'servicio' };
   if (!proOffers(c, professionalId, serviceId)) return { ok: false, reason: 'profesional' };
+  if (!force && live && origin === 'chat' && start <= nowStamp()) return { ok: false, reason: 'pasado' }; // el chat nunca agenda en el pasado (la semilla sí, con live: false)
   if (!force) {
     const problem = slotProblem(c, professionalId, start, svc.minutes);
     if (problem) return { ok: false, reason: problem };
@@ -174,6 +207,7 @@ export function moveAppointment(c, id, { start, professionalId } = {}, { notice 
   const pro = professionalId || a.professionalId;
   const s = start || a.start;
   if (!proOffers(c, pro, a.serviceId)) return { ok: false, reason: 'profesional' };
+  if (actor === 'chat' && s <= nowStamp()) return { ok: false, reason: 'pasado' };
   const problem = slotProblem(c, pro, s, a.minutes, a.id);
   if (problem) return { ok: false, reason: problem };
   if (patientConflict(c, { phone: a.phone, patientId: a.patientId, start: s, minutes: a.minutes, ignoreId: a.id })) return { ok: false, reason: 'paciente_ocupado' };

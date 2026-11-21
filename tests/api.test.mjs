@@ -73,8 +73,11 @@ test('origen no permitido y cuerpo inválido', async () => {
   const handler = createHandler({ env: { ANTHROPIC_API_KEY: 'k', ALLOWED_ORIGINS: 'https://citas.panacealogic.dev' }, getClient: async () => fake('{"reply":"ok","actions":[],"handoff":false}') });
   assert.equal((await handler(post(good, { origin: 'https://otro.com' }))).status, 403);
   assert.equal((await handler(post(good, { origin: 'https://citas.panacealogic.dev' }))).status, 200);
-  assert.equal((await handler(new Request('http://x/api/chat', { method: 'POST', body: '{no' }))).status, 400);
-  assert.equal((await handler(new Request('http://x/api/chat', { method: 'PUT' }))).status, 405);
+  const allowed = { origin: 'https://citas.panacealogic.dev' };
+  assert.equal((await handler(new Request('http://x/api/chat', { method: 'POST', headers: allowed, body: '{no' }))).status, 400);
+  assert.equal((await handler(new Request('http://x/api/chat', { method: 'PUT', headers: allowed }))).status, 405);
+  assert.equal((await handler(new Request('http://x/api/chat', { method: 'POST', body: JSON.stringify(good) }))).status, 403); // POST sin Origin
+  assert.equal((await handler(new Request('http://x/api/chat'))).status, 200); // GET de estado al mismo sitio (sin Origin)
 });
 
 test('el prompt incluye el mismo flujo del guion, la privacidad y las urgencias', () => {

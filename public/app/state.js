@@ -28,6 +28,10 @@ export function createStore({ storage = createStorage(STORAGE_KEY) } = {}) {
     const ok = saved && saved.v === 2 && GIROS.every((g) => saved.clinics?.[g]);
     state = ok ? saved : seedAll();
     if (!GIROS.includes(state.giro)) state.giro = 'fisio';
+    // Estados guardados antes de existir modoDemo: esta es la demo comercial, así que se activa.
+    for (const g of GIROS) if (state.clinics[g]?.config && state.clinics[g].config.modoDemo === undefined) state.clinics[g].config.modoDemo = true;
+    // Estados guardados antes de los feriados: se cierran los feriados nacionales y tradicionales (se puede cambiar en Configuración › Horario).
+    for (const g of GIROS) if (state.clinics[g]?.config && !state.clinics[g].config.cierres) state.clinics[g].config.cierres = { feriadosNacionales: true, tradicionales: true, abiertoEn: [], extra: [] };
     // Si cambió la semana, las citas de la semilla ya no son "de esta semana": se vuelve a sembrar ese giro.
     for (const g of GIROS) {
       if (state.clinics[g].seedWeek !== mondayOf(todayKey())) {

@@ -7,7 +7,7 @@ import { rollTo } from '../../shared/ui/motion.js';
 import {
   addDays, clock, dateLong, dateShort, dayOfWeek, fromMin, mondayOf, now, stampShort, time12, toMin, todayKey, weekDays,
 } from '../../shared/time/panama.js';
-import { REASONS, STATUS_KEYS, dayHours, getAppt, getPro, getService, kpis, moveAppointment, notifyPatient, weekAppts } from '../agenda.js';
+import { REASONS, STATUS_KEYS, closureOf, dayHours, getAppt, getPro, getService, kpis, moveAppointment, notifyPatient, weekAppts } from '../agenda.js';
 import { firstName } from '../format.js';
 import { stampLong } from '../../shared/time/panama.js';
 import { openApptModal, openNewApptModal } from '../ui/appt-modal.js';
@@ -122,7 +122,7 @@ export function mount(root, app) {
     if (ui.mode === 'dia') return activePros().map((p) => ({ dayKey: ui.anchor, proId: p.id, title: p.name, sub: p.specialty, who: p.name, today: ui.anchor === todayKey() }));
     const p = ui.proId === ALL ? null : (getPro(cl, ui.proId) || activePros()[0]);
     return weekDays(ui.anchor)
-      .filter((k) => dayHours(cl, k) || cl.appointments.some((a) => a.start.slice(0, 10) === k && (!p || a.professionalId === p.id)))
+      .filter((k) => dayHours(cl, k) || (closureOf(cl, k) && cl.config.hours[dayOfWeek(k)]) || cl.appointments.some((a) => a.start.slice(0, 10) === k && (!p || a.professionalId === p.id)))
       .map((k) => ({ dayKey: k, proId: p ? p.id : ALL, title: dateShort(k).split(' ')[0].replace(/^./, (x) => x.toUpperCase()), sub: dateShort(k).split(' ').slice(1).join(' '), dnum: Number(k.slice(8, 10)), today: k === todayKey() }));
   }
 
@@ -156,7 +156,7 @@ export function mount(root, app) {
         h('span', { class: 'day-card__time' }, time12(a.start.slice(11, 16))),
         h('span', { class: 'day-card__body' }, h('b', null, a.name), h('small', null, getService(cl, a.serviceId)?.name || ''), h('small', null, getPro(cl, a.professionalId)?.name || '')),
         badge(a.status)))
-      : h('p', { class: 'empty' }, dayHours(cl, ui.anchor) ? 'No hay citas este día.' : 'La clínica no atiende este día.')));
+      : h('p', { class: 'empty' }, dayHours(cl, ui.anchor) ? 'No hay citas este día.' : closureOf(cl, ui.anchor) ? `Cerrado: ${closureOf(cl, ui.anchor).name}.` : 'La clínica no atiende este día.')));
   }
 
   function paintCal() {
@@ -189,7 +189,7 @@ export function mount(root, app) {
       const pro = all ? null : getPro(cl, col.proId);
       const el = h('div', { class: `cal__col${col.today ? ' is-today' : ''}`, style: { height: `${total}px` }, dataset: { day: col.dayKey, pro: col.proId } });
       const off = (from, to, label) => { if (to > from) el.append(h('div', { class: 'cal__off', style: { top: `${topOf(from)}px`, height: `${(to - from) * PX}px` } }, label)); };
-      if (!hours) off(minM, maxM, 'Cerrado');
+      if (!hours) off(minM, maxM, closureOf(cl, col.dayKey) ? `Cerrado · ${closureOf(cl, col.dayKey).name}` : 'Cerrado');
       else if (!all && !pro?.days.includes(dayOfWeek(col.dayKey))) off(minM, maxM, 'No atiende');
       else {
         off(minM, toMin(hours.open), ''); off(toMin(hours.close), maxM, '');

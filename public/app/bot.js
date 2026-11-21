@@ -7,12 +7,12 @@
 // Flujo del guion (el modo IA real usa este mismo flujo como instrucciones; ver api/chat.js):
 //   a) saludo con menú · b) agendar · c) recordatorio · d) reprogramar y cancelar · e) urgencias · f) seguimiento
 import {
-  compile, has, hasClockMention, hasHealthWords, matchesAny, norm, parseAge, parseChoice, parseClock, parseDayPref, parseName, parsePhone,
-  parseTimeOfDay, parseYesNo, phoneDisplay, stripNegatedPain, titleCase,
+  MOBILE_HINT, compile, extractName, has, hasClockMention, hasHealthWords, isPanamaMobile, matchesAny, norm, parseAge, parseChoice, parseClock, parseDayPref,
+  parseName, parsePhone, parsePrefsWeek, parseTimeOfDay, parseYesNo, phoneDisplay, stripNegatedPain, titleCase,
 } from '../shared/chat-engine/nlu.js';
 import { DAYS, DAYS_SHORT, addDays, dateLong, dateShort, dayOfWeek, stamp, stampLong, stampShort, time12, todayKey } from '../shared/time/panama.js';
 import {
-  REASONS, activeServices, dayHours, earliestStart, freeSlots, getAppt, getPatient, getPro, getService, moveAppointment, patientByPhone, patientConflict,
+  REASONS, activeServices, closureOf, dayHours, earliestStart, upcomingClosures, freeSlots, getAppt, getPatient, getPro, getService, moveAppointment, patientByPhone, patientConflict,
   setStatus, slotProblem, upcomingForPhone, createAppointment, UPCOMING,
 } from './agenda.js';
 import { fill, firstName, hoursSummary, priceLabel } from './format.js';
@@ -115,16 +115,24 @@ const chatPhone = (e) => chatIdentity(e.conv, e.T).phone;
 
 const prosFor = (c, serviceId) => c.config.professionals.filter((p) => p.active !== false && p.serviceIds.includes(serviceId));
 const isVet = (c) => c.giro === 'vet';
+/**
+ * Modo demo (solo la demo comercial): muestra la «pista» con un paciente ficticio y deja buscar citas con un número escrito en el chat.
+ * En producción (modoDemo distinto de true) la identidad es SOLO el número de WhatsApp que escribe: nadie ve ni toca citas de otro número.
+ */
+export const isDemo = (c) => c?.config?.modoDemo === true;
 
 function parsePrefs(text, today) {
   const prefs = {};
   const day = parseDayPref(text, today); if (day) prefs.day = day;
   const part = parseTimeOfDay(text); if (part) prefs.part = part;
   if (hasClockMention(text)) { const k = parseClock(text); if (k) prefs.clockAt = k; }
+  if (!prefs.day) { const wk = parsePrefsWeek(text, today); if (wk) prefs.fromDay = wk; }
   return prefs;
 }
-const hasPrefs = (p) => !!(p && (p.day || p.part || p.clockAt));
-const prefsText = (p) => [p.day ? `para el ${dateLong(p.day)}` : '', p.part ? `por la ${p.part === 'manana' ? 'mañana' : p.part}` : '', p.clockAt ? `a las ${time12(p.clockAt)}` : ''].filter(Boolean).join(' ');
+const hasPrefs = (p) => !!(p && (p.day || p.part || p.clockAt || p.fromDay));
+/** Desde cuándo buscar: lo más pronto posible, o desde el día pedido («la próxima semana»), lo que sea más tarde. */
+const fromWithPrefs = (from, p) => (p?.fromDay && `${p.fromDay}T00:00` > from ? `${p.fromDay}T00:00` : from);
+const prefsText = (p) => [p.fromDay && !p.day ? `a partir del ${dateLong(p.fromDay)}` : '', p.day ? `para el ${dateLong(p.day)}` : '', p.part ? `por la ${p.part === 'manana' ? 'mañana' : p.part}` : '', p.clockAt ? `a las ${time12(p.clockAt)}` : ''].filter(Boolean).join(' ');
 
 // ---------------------------------------------------------------------------------------------
 
@@ -182,7 +190,8 @@ function stepMenu(e, text) {
   const concern = !num && EVAL_CONCERN.some((re) => re.test(norm(text))) ? evalService(c) : null;
   if (concern) return evalOffer(e, text, concern);
   let intent = num ? { name: MENU_MAP[num[1]] } : detectIntent(text);
-  if (!intent && detectService(c, text)) intent = { name: 'agendar' };
+  // «Hola, quiero una limpieza…»: el saludo (o un «gracias») no tapa el servicio pedido en la misma frase.
+  if ((!intent || intent.name === 'saludo' || intent.name === 'gracias') && detectService(c, text)) intent = { name: 'agendar' };
   if (!intent && hasHealthWords(text)) return healthOffer(e);
   if (!intent) {
     S.misses = (S.misses || 0) + 1;
@@ -234,20 +243,41 @@ function mentionedServices(c, text) {
   return activeServices(c).filter((s) => [s.name, ...(s.kw || [])].some((k) => { const p = compile(k); return typeof p === 'string' && has(t, p); }));
 }
 
-/** Días que el texto menciona: hoy, mañana, pasado mañana, un día de la semana o el fin de semana. */
+/**
+ * Días que el texto menciona: hoy, mañana, pasado mañana, una fecha («el 28 de noviembre»), un día de la semana o el fin de semana.
+ * Si se refiere a un día concreto (no «los sábados» en general) lleva `key` ('YYYY-MM-DD') para revisar feriados y cierres.
+ */
 function mentionedDays(text, today) {
   const t = norm(text);
   const out = [];
-  const add = (dow, label) => { if (!out.some((d) => d.dow === dow)) out.push({ dow, label: `${label}${label === 'El' ? ' ' : ' ('}${DAYS[dow]}${label === 'El' ? '' : ')'}` }); };
-  if (/\bhoy\b/.test(t)) add(dayOfWeek(today), 'Hoy');
-  if (/\bpasado manana\b/.test(t)) add(dayOfWeek(addDays(today, 2)), 'Pasado mañana');
-  else if (/\bmanana\b/.test(t.replace(/\b(en|por|de|a|durante|para) la manana\b/g, ' '))) add(dayOfWeek(addDays(today, 1)), 'Mañana');
-  for (const [name, dow] of Object.entries(WEEKDAY_NAMES)) if (new RegExp(`\\b${name}s?\\b`).test(t)) add(dow, 'El');
+  const add = (dow, label, key = null) => { if (!out.some((d) => d.dow === dow)) out.push({ dow, key, label: `${label}${label === 'El' ? ' ' : ' ('}${DAYS[dow]}${label === 'El' ? '' : ')'}` }); };
+  if (/\bhoy\b/.test(t)) add(dayOfWeek(today), 'Hoy', today);
+  if (/\bpasado manana\b/.test(t)) add(dayOfWeek(addDays(today, 2)), 'Pasado mañana', addDays(today, 2));
+  else if (/\bmanana\b/.test(t.replace(/\b(en|por|de|a|durante|para) la manana\b/g, ' '))) add(dayOfWeek(addDays(today, 1)), 'Mañana', addDays(today, 1));
+  // Una fecha con número («el 28», «28 de noviembre», «el lunes 16»).
+  const exact = /\d/.test(t) ? parseDayPref(text, today) : null;
+  if (exact && !out.some((d) => d.key === exact)) out.push({ dow: dayOfWeek(exact), key: exact, label: `El ${dateLong(exact)}` });
+  for (const [name, dow] of Object.entries(WEEKDAY_NAMES)) {
+    if (out.some((d) => d.dow === dow)) continue;
+    if (new RegExp(`\\b${name}\\b`).test(t)) { let k = today; while (dayOfWeek(k) !== dow) k = addDays(k, 1); add(dow, 'El', k); } // «el sábado»: el próximo
+    else if (new RegExp(`\\b${name}s\\b`).test(t)) add(dow, 'El'); // «los sábados»: en general
+  }
   if (/\bfines? de semana\b/.test(t)) { add(6, 'El'); add(0, 'El'); }
   return out;
 }
 
+/** «es feriado (Navidad)» o «la clínica estará cerrada (vacaciones)». */
+const closureWhy = (z) => (z.kind === 'propio' ? `la clínica estará cerrada (${z.name})` : `es feriado (${z.name})`);
+/** Aviso cuando el día pedido está cerrado por feriado o por un cierre propio; null si abre normal. */
+function closedNote(c, day) {
+  const z = day && closureOf(c, day);
+  if (!z) return null;
+  return z.kind === 'propio' ? `El ${dateLong(day)} la clínica estará cerrada (${z.name})` : `El ${dateLong(day)} es feriado (${z.name}) y no atendemos`;
+}
+
 function dayHoursLine(c, d, text) {
+  const z = d.key && closureOf(c, d.key);
+  if (z) return `${d.label} no atendemos: ${closureWhy(z)}.`;
   const h = c.config.hours[d.dow];
   if (!h) return `${d.label} no atendemos.`;
   const t = norm(text);
@@ -257,7 +287,13 @@ function dayHoursLine(c, d, text) {
 }
 
 const serviceLine = (s) => `${s.name}: ${priceLabel(s)} (${s.minutes} min)${s.sessions ? ` · incluye ${s.sessions} sesiones` : ''}`;
-const hoursBlock = (c) => `Horario de atención:\n${Object.values(c.config.hours).every((h) => !h) ? 'Aún no tengo el horario de atención configurado.' : hoursSummary(c)}`;
+/** Horario semanal y, si hay, los próximos feriados o cierres (30 días) que caen en días en que normalmente se abre. */
+function hoursBlock(c) {
+  if (Object.values(c.config.hours).every((h) => !h)) return 'Horario de atención:\nAún no tengo el horario de atención configurado.';
+  const next = upcomingClosures(c, todayKey(), 30).slice(0, 3);
+  const extra = next.length ? `\n\nPróximos feriados y cierres (no atendemos):\n${next.map((x) => `• ${cap(dateLong(x.date))}: ${x.name}`).join('\n')}` : '';
+  return `Horario de atención:\n${hoursSummary(c)}${extra}`;
+}
 
 function pricesFlow(e, text = '') {
   const { c } = e;
@@ -398,6 +434,7 @@ const speciesKey = (s) => { const t = norm(s); return /^perr|^cachorr/.test(t) ?
 function learn(e, text) {
   const d = e.conv.script.data;
   if (isVet(e.c)) { const sp = detectSpecies(text); if (sp) d.species = sp; }
+  if (!d.name) { const n = extractName(text); if (n) d.name = n; } // «…soy Carlos»: no se vuelve a preguntar
 }
 
 function startBooking(e, text, preset = {}) {
@@ -436,10 +473,11 @@ function stepSvc(e, text) {
   const d = conv.script.data;
   const svcs = activeServices(c);
   const n = parseChoice(text, svcs.length);
-  const svc = detectService(c, text) || (n ? svcs[n - 1] : null);
+  const named = detectService(c, text);
+  const svc = named || (n ? svcs[n - 1] : null);
   if (!svc) return askService(e, 'No encontré ese servicio. ');
   d.serviceId = svc.id;
-  Object.assign(d.prefs, parsePrefs(text, e.today));
+  if (named || !n) Object.assign(d.prefs, parsePrefs(text, e.today)); // «el 2» elige la opción 2, no el día 2
   learn(e, text);
   const pro = detectPro(c, text); if (pro) d.professionalId = pro;
   advance(e);
@@ -456,10 +494,11 @@ function stepPro(e, text) {
   const d = conv.script.data;
   const pros = prosFor(c, d.serviceId);
   const n = parseChoice(text, pros.length + 1);
-  const found = detectPro(c, text) || (n ? (n === pros.length + 1 ? 'any' : pros[n - 1].id) : null);
+  const named = detectPro(c, text);
+  const found = named || (n ? (n === pros.length + 1 ? 'any' : pros[n - 1].id) : null);
   if (!found) return askPro(e, pros);
   d.professionalId = found;
-  Object.assign(d.prefs, parsePrefs(text, e.today));
+  if (named || !n) Object.assign(d.prefs, parsePrefs(text, e.today));
   learn(e, text);
   offerSlots(e);
 }
@@ -503,10 +542,10 @@ function offerSlots(e) {
   const svc = getService(c, d.serviceId);
   const base = { serviceId: d.serviceId, professionalId: !d.professionalId || d.professionalId === 'any' ? null : d.professionalId, from: earliestStart(c, e.nowS), patientPhone: d.phone || null };
   let note = '';
-  let slots = nextSlots(c, { ...base, dayKey: d.prefs?.day, part: d.prefs?.part, clockAt: d.prefs?.clockAt }, 3, d.seen);
+  let slots = nextSlots(c, { ...base, from: fromWithPrefs(base.from, d.prefs), dayKey: d.prefs?.day, part: d.prefs?.part, clockAt: d.prefs?.clockAt }, 3, d.seen);
   if (!slots.length && hasPrefs(d.prefs)) {
     slots = nextSlots(c, base, 3, d.seen);
-    if (slots.length) note = `No tengo cupos ${prefsText(d.prefs)}; estos son los próximos horarios disponibles.\n\n`;
+    if (slots.length) note = `${closedNote(c, d.prefs?.day) || `No tengo cupos ${prefsText(d.prefs)}`}; estos son los próximos horarios disponibles.\n\n`;
   }
   if (!slots.length) {
     conv.script.step = 'menu'; conv.script.data = {};
@@ -546,6 +585,7 @@ function stepSlots(e, text) {
   if (ans.kind === 'none') { conv.script.misses = (conv.script.misses || 0) + 1; return e.say('No logré identificar el horario. Responda con el número (1, 2 o 3), o escriba «otros horarios».', undefined); }
   const slot = d.offered[ans.idx];
   const svc = getService(c, d.serviceId);
+  if (slot.start <= e.nowS) { e.say('Ese horario ya pasó. Estos son los siguientes disponibles.'); return offerSlots(e); }
   if (slotProblem(c, slot.professionalId, slot.start, svc.minutes)) { e.say('Ese horario acaba de ocuparse. Veamos otros disponibles.'); return offerSlots(e); }
   d.slot = slot; d.professionalId = slot.professionalId;
   conv.script.misses = 0;
@@ -559,7 +599,8 @@ function afterSlot(e) {
   if (!d.phone) d.phone = chatPhone(e); // el teléfono es el del chat (WhatsApp ya lo conoce): no se pide
   if (isVet(c) && !d.pet) {
     // Registro del paciente (por su teléfono o, si el bot le escribió primero, por la conversación): se usa la mascota que ya conocemos.
-    const rec = patientByPhone(c, d.phone) || (!d.customPhone && conv.patientId ? getPatient(c, conv.patientId) : null);
+    // En producción, un número escrito a mano (otra persona) no revela la mascota registrada a ese número.
+    const rec = (d.customPhone && !isDemo(c) ? null : patientByPhone(c, d.phone)) || (!d.customPhone && conv.patientId ? getPatient(c, conv.patientId) : null);
     if (rec?.pet && (!d.species || speciesKey(d.species) === speciesKey(rec.pet.species))) d.pet = { ...rec.pet };
   }
   if (!d.name) {
@@ -586,7 +627,7 @@ function askPhone(e) {
 }
 function stepPhone(e, text) {
   const p = parsePhone(text);
-  if (!p) return e.say('Necesito un número de 7 u 8 dígitos, por ejemplo 6000-1234.');
+  if (!p || !isPanamaMobile(p)) return e.say(MOBILE_HINT);
   e.conv.script.data.phone = p;
   afterSlot(e);
 }
@@ -594,14 +635,14 @@ function stepPhone(e, text) {
 function askAltPhone(e) {
   const d = e.conv.script.data;
   e.conv.script.step = 'alt_phone';
-  e.say(`Claro. ¿Qué número desea dejar para el recordatorio? (7 u 8 dígitos, por ejemplo 6000-1234). Si prefiere el de este chat (${phoneDisplay(chatPhone(e))}), escriba «el mismo».`,
+  e.say(`Claro. ¿Qué celular desea dejar para el recordatorio? (8 dígitos que empiecen con 6, por ejemplo 6000-1234). Si prefiere el de este chat (${phoneDisplay(chatPhone(e))}), escriba «el mismo».`,
     [{ label: `Usar el de este chat`, text: 'el mismo' }]);
 }
 function stepAltPhone(e, text, t) {
   const d = e.conv.script.data;
   if (has(t, 'mismo') || has(t, 'este chat') || has(t, 'el de aqui') || parseYesNo(text) === 'no') { d.phone = chatPhone(e); d.customPhone = false; return afterSlot(e); }
   const p = parsePhone(text);
-  if (!p) return e.say('Necesito un número de 7 u 8 dígitos, por ejemplo 6000-1234.', [{ label: 'Usar el de este chat', text: 'el mismo' }]);
+  if (!p || !isPanamaMobile(p)) return e.say(MOBILE_HINT, [{ label: 'Usar el de este chat', text: 'el mismo' }]);
   d.phone = p; d.customPhone = p !== chatPhone(e);
   afterSlot(e);
 }
@@ -668,9 +709,13 @@ function stepConfirm(e, text, t) {
   const typed = parsePhone(text);
   if (wantsOtherPhone(t) || (typed && !n)) {
     if (!typed) return askAltPhone(e);
+    if (!isPanamaMobile(typed)) { e.conv.script.step = 'alt_phone'; return e.say(MOBILE_HINT, [{ label: 'Usar el de este chat', text: 'el mismo' }]); }
     d.phone = typed; d.customPhone = typed !== chatPhone(e);
     return showConfirm(e);
   }
+  // Cambio de opinión en el resumen («mejor el viernes», «a las 4», «la próxima semana»): se buscan horarios con eso.
+  const prefs = n ? {} : parsePrefs(text, e.today);
+  if (hasPrefs(prefs) && parseYesNo(text) !== 'si') { d.prefs = prefs; d.seen = []; d.slot = null; return offerSlots(e); }
   if (n === 2 || has(t, 'cambiar') || has(t, 'otro horario') || has(t, 'otra hora')) return offerSlots(e);
   if (n === 3 || yn === 'no' || has(t, 'cancelar')) { reset(e); return e.say('Listo, no agendé nada. ¿Puedo ayudarle con algo más?', MENU_CHIPS); }
   if (n !== 1 && yn !== 'si') return e.say('Responda 1 para confirmar, 2 para cambiar el horario o 3 para cancelar.', [{ label: 'Sí, confirmar', text: '1' }, { label: 'Cambiar horario', text: '2' }, { label: 'Cancelar', text: '3' }]);
@@ -704,7 +749,7 @@ function startChange(e, text, action) {
   const { conv } = e;
   conv.script.data = { action };
   // Las citas se buscan con el teléfono del chat (no se pide); solo si no hay ninguna se ofrece escribir otro número.
-  const phone = parsePhone(text) || chatPhone(e);
+  const phone = (isDemo(e.c) ? parsePhone(text) : null) || chatPhone(e);
   if (phone) return findAppts(e, phone);
   conv.script.step = 'find_phone';
   const hint = demoHint(e);
@@ -712,6 +757,7 @@ function startChange(e, text, action) {
 }
 
 function demoHint(e) {
+  if (!isDemo(e.c)) return { text: '', chip: null }; // en producción nunca se muestran datos de otro paciente
   const upcoming = e.c.appointments.filter((x) => UPCOMING.has(x.status) && x.start > e.nowS && x.origin).sort((p, q) => (p.start < q.start ? -1 : 1));
   // Se prefiere un paciente con una sola cita próxima, para que la pista lleve directo a "reprogramar" sin elegir entre varias.
   const a = upcoming.find((x) => upcoming.filter((y) => y.phone === x.phone).length === 1) || upcoming[0];
@@ -721,6 +767,10 @@ function demoHint(e) {
 function findAppts(e, phone) {
   const { c, conv } = e;
   const list = upcomingForPhone(c, phone, e.nowS);
+  if (!list.length && !isDemo(c)) {
+    conv.script.step = 'menu'; conv.script.data = {};
+    return e.say('No encontré citas próximas a este número de WhatsApp. Si la agendó con otro número, una persona del equipo puede ayudarle.', [HUMAN_CHIP, ...MENU_ONLY]);
+  }
   if (!list.length) {
     conv.script.step = 'find_phone';
     const hint = demoHint(e);
@@ -736,6 +786,7 @@ function findAppts(e, phone) {
 }
 
 function stepFindPhone(e, text) {
+  if (!isDemo(e.c)) return findAppts(e, chatPhone(e)); // producción: solo el número del chat
   const p = parsePhone(text);
   if (!p) { const hint = demoHint(e); return e.say(`Necesito el número con el que se agendó, por ejemplo 6000-1234.${hint.text}`, [hint.chip, HUMAN_CHIP, ...MENU_ONLY].filter(Boolean)); }
   findAppts(e, p);
@@ -788,9 +839,9 @@ function offerSlotsResched(e) {
   const a = getAppt(c, d.apptId);
   const from = earliestStart(c, e.nowS);
   const base = { serviceId: a.serviceId, professionalId: d.professionalId === 'any' ? null : d.professionalId, from, ignoreId: a.id, excludeSlot: { start: a.start, professionalId: a.professionalId }, patientPhone: a.phone, patientId: a.patientId };
-  let slots = nextSlots(c, { ...base, dayKey: d.prefs?.day, part: d.prefs?.part, clockAt: d.prefs?.clockAt }, 3, d.seen);
+  let slots = nextSlots(c, { ...base, from: fromWithPrefs(base.from, d.prefs), dayKey: d.prefs?.day, part: d.prefs?.part, clockAt: d.prefs?.clockAt }, 3, d.seen);
   let note = '';
-  if (!slots.length && hasPrefs(d.prefs)) { slots = nextSlots(c, base, 3, d.seen); if (slots.length) note = `No tengo cupos ${prefsText(d.prefs)}; estos son los próximos horarios.\n\n`; }
+  if (!slots.length && hasPrefs(d.prefs)) { slots = nextSlots(c, base, 3, d.seen); if (slots.length) note = `${closedNote(c, d.prefs?.day) || `No tengo cupos ${prefsText(d.prefs)}`}; estos son los próximos horarios.\n\n`; }
   if (!slots.length) {
     conv.script.step = 'menu'; conv.script.data = {};
     const crossing = !d.seen.length && nextSlots(c, { ...base, patientPhone: null, patientId: null }, 1).length;
@@ -813,6 +864,7 @@ function stepReschedSlots(e, text) {
   const slot = d.offered[ans.idx];
   const a = getAppt(c, d.apptId);
   const slotMinutes = a.minutes;
+  if (slot.start <= e.nowS) { e.say('Ese horario ya pasó. Estos son los siguientes disponibles.'); return offerSlotsResched(e); }
   if (slotProblem(c, slot.professionalId, slot.start, slotMinutes, a.id)) { e.say('Ese horario acaba de ocuparse. Veamos otros disponibles.'); return offerSlotsResched(e); }
   d.newSlot = slot;
   conv.script.misses = 0;
@@ -881,6 +933,9 @@ function stepCancelConfirm(e, text) {
 
 // --- c) Recordatorio ----------------------------------------------------------------------------
 
+/** «hoy», «mañana» o «el jueves 19 de noviembre», según el día de la cita. */
+export const whenText = (day, today) => (day === today ? 'hoy' : day === addDays(today, 1) ? 'mañana' : `el ${dateLong(day)}`);
+
 /** El bot escribe primero: recordatorio del día anterior. Devuelve { out, touched }. */
 export function startReminder(c, conv, apptId, ctx) {
   const a = getAppt(c, apptId);
@@ -890,8 +945,12 @@ export function startReminder(c, conv, apptId, ctx) {
   conv.patientId = a.patientId; conv.name = a.name; conv.phone = a.phone; conv.mode = 'bot';
   a.reminder = 'enviado';
   e.log('recordatorio', `Recordatorio enviado · ${a.name} · cita ${stampShort(a.start)}`, a.id);
-  e.say(fill(c.config.messages.reminder, {
-    nombre: firstName(a.name), hora: time12(a.start.slice(11, 16)), fecha: dateLong(a.start.slice(0, 10)), servicio: getService(c, a.serviceId).name,
+  const cuando = whenText(a.start.slice(0, 10), e.today);
+  const tpl = c.config.messages.reminder || '';
+  // Textos antiguos traen «mañana» fijo: si la cita no es mañana, se cambia por «hoy» o la fecha.
+  const fixed = tpl.includes('{cuando}') || cuando === 'mañana' ? tpl : tpl.replace(/\bmañana\b/, cuando);
+  e.say(fill(fixed, {
+    nombre: firstName(a.name), hora: time12(a.start.slice(11, 16)), fecha: dateLong(a.start.slice(0, 10)), cuando, servicio: getService(c, a.serviceId).name,
     profesional: getPro(c, a.professionalId).name, clinica: ctx.profile.name,
   }), [{ label: '1. Sí', text: '1' }, { label: '2. Reprogramar', text: '2' }]);
   return { out, touched: [...e.touched] };
